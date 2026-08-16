@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+
+node_modules/
+dist/
+build/
+coverage/
+playwright-report/
+test-results/
+
+.DS_Store
+
+# Local prompt/reference material, not part of the submission repo.
+Assignment A*.pdf
