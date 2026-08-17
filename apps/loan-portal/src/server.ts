@@ -37,6 +37,9 @@ export function createLoanPortalApp(): express.Express {
     if (!member || !offer) return response.status(404).send("Offer not found");
     const vehicleType = typeof request.query.vehicleType === "string" ? request.query.vehicleType : "";
     if (!vehicleType) return response.status(400).send("Vehicle type is required");
+    if (vehicleType !== "new" && vehicleType !== "used") {
+      return response.status(400).send("Vehicle type must be new or used");
+    }
     return response.send(renderReview(member, offer, vehicleType));
   });
 

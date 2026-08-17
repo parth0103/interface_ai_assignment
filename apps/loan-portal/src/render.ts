@@ -1,5 +1,15 @@
 import type { LoanOffer, MemberRecord, SearchResult } from "./data.js";
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;"
+  })[character] ?? character);
+}
+
 function shell(title: string, body: string): string {
   return `<!doctype html>
 <html lang="en">
@@ -39,6 +49,7 @@ export function renderDashboard(): string {
 }
 
 export function renderSearch(memberId = "", results: SearchResult[] = []): string {
+  const escapedMemberId = escapeHtml(memberId);
   const rows = results.map((result) => `
     <tr>
       <td>${result.memberId}</td>
@@ -47,11 +58,11 @@ export function renderSearch(memberId = "", results: SearchResult[] = []): strin
       <td>${result.addressHint}</td>
       <td><a class="button" href="/members/${result.recordId}">Open Member</a></td>
     </tr>`).join("");
-  const message = memberId && results.length === 0 ? `<p>No member found for ${memberId}.</p>` : "";
+  const message = memberId && results.length === 0 ? `<p>No member found for ${escapedMemberId}.</p>` : "";
   return shell("Member Search", `
     <h2>Member Search</h2>
     <form method="get" action="/members/search">
-      <label>Member ID <input name="memberId" value="${memberId}" /></label>
+      <label>Member ID <input name="memberId" value="${escapedMemberId}" /></label>
       <button type="submit">Search</button>
     </form>
     ${message}
@@ -115,6 +126,7 @@ export function renderOfferTerms(member: MemberRecord, offer: LoanOffer): string
 }
 
 export function renderReview(member: MemberRecord, offer: LoanOffer, vehicleType: string): string {
+  const escapedVehicleType = escapeHtml(vehicleType);
   return shell("Final Review", `
     <h2>Final Review</h2>
     <p>Review Status: Ready for final review</p>
@@ -125,7 +137,7 @@ export function renderReview(member: MemberRecord, offer: LoanOffer, vehicleType
         <tr><th>APR</th><td>${offer.apr}</td></tr>
         <tr><th>Max Amount</th><td>${offer.maxAmount}</td></tr>
         <tr><th>Term</th><td>${offer.termMonths} months</td></tr>
-        <tr><th>Vehicle Type</th><td>${vehicleType}</td></tr>
+        <tr><th>Vehicle Type</th><td>${escapedVehicleType}</td></tr>
       </tbody>
     </table>
     <button class="danger" type="button">Submit Final Application</button>`);
