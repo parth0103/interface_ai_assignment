@@ -44,7 +44,7 @@ export function renderDashboard(): string {
     <section class="panel">
       <h2>Operator Dashboard</h2>
       <p>Use Member Search to open member servicing records.</p>
-      <a class="button" href="/members/search">Member Search</a>
+      <a class="button" href="/members/search">Search for a Member</a>
     </section>`);
 }
 
@@ -62,7 +62,8 @@ export function renderSearch(memberId = "", results: SearchResult[] = []): strin
   return shell("Member Search", `
     <h2>Member Search</h2>
     <form method="get" action="/members/search">
-      <label>Member ID <input name="memberId" value="${escapedMemberId}" /></label>
+      <label for="member-id-input">Member ID</label>
+      <input id="member-id-input" name="memberId" value="${escapedMemberId}" />
       <button type="submit">Search</button>
     </form>
     ${message}
