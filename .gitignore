@@ -9,6 +9,8 @@ coverage/
 playwright-report/
 test-results/
 
+.worktrees
+
 .DS_Store
 
 # Local prompt/reference material, not part of the submission repo.
