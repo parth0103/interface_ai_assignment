@@ -35,6 +35,14 @@ const members: MemberRecord[] = [
         apr: "6.49%",
         maxAmount: "$25,000",
         termMonths: 60
+      },
+      {
+        offerId: "OFFER-EXPIRED-24816",
+        type: "auto_loan",
+        status: "expired",
+        apr: "6.99%",
+        maxAmount: "$20,000",
+        termMonths: 48
       }
     ]
   },

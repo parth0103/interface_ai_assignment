@@ -87,9 +87,10 @@ export function renderMember(member: MemberRecord): string {
 
 export function renderOffers(member: MemberRecord): string {
   const warning = member.flags.includes("special_handling_notice")
-    ? `<div class="warning">Special handling note requires operator acknowledgement.</div>`
+    ? `<div class="warning">Special handling note: informational warning for this foundation scope.</div>`
     : "";
-  const rows = member.offers.map((offer) => `
+  const activeOffers = member.offers.filter((offer) => offer.status === "active");
+  const rows = activeOffers.map((offer) => `
     <tr>
       <td>Pre-approved Auto Loan</td>
       <td>${offer.status}</td>
@@ -97,7 +98,7 @@ export function renderOffers(member: MemberRecord): string {
       <td>${offer.apr}</td>
       <td><a class="button" href="/members/${member.recordId}/offers/${offer.offerId}">Open Offer</a></td>
     </tr>`).join("");
-  const body = rows
+  const body = activeOffers.length
     ? `<table aria-label="Pre-approved Offers"><thead><tr><th>Offer Type</th><th>Status</th><th>Max Amount</th><th>APR</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table>`
     : `<p>No active pre-approved auto loan offers</p>`;
   return shell("Pre-approved Offers", `<h2>Pre-approved offers</h2>${warning}${body}`);

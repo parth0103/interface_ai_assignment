@@ -26,14 +26,18 @@ export function createLoanPortalApp(): express.Express {
 
   app.get("/members/:recordId/offers/:offerId", (request, response) => {
     const member = getMemberByRecordId(request.params.recordId);
-    const offer = member?.offers.find((candidate) => candidate.offerId === request.params.offerId);
+    const offer = member?.offers.find(
+      (candidate) => candidate.offerId === request.params.offerId && candidate.status === "active"
+    );
     if (!member || !offer) return response.status(404).send("Offer not found");
     return response.send(renderOfferTerms(member, offer));
   });
 
   app.get("/members/:recordId/offers/:offerId/review", (request, response) => {
     const member = getMemberByRecordId(request.params.recordId);
-    const offer = member?.offers.find((candidate) => candidate.offerId === request.params.offerId);
+    const offer = member?.offers.find(
+      (candidate) => candidate.offerId === request.params.offerId && candidate.status === "active"
+    );
     if (!member || !offer) return response.status(404).send("Offer not found");
     const vehicleType = typeof request.query.vehicleType === "string" ? request.query.vehicleType : "";
     if (!vehicleType) return response.status(400).send("Vehicle type is required");

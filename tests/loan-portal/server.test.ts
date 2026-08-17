@@ -35,6 +35,27 @@ describe("loan portal routes", () => {
     expect(response.text).toContain("No active pre-approved auto loan offers");
   });
 
+  it("does not list expired pre-approved offers", async () => {
+    const response = await request(app).get("/members/rec-24816/offers");
+    expect(response.status).toBe(200);
+    expect(response.text).toContain("OFFER-4421");
+    expect(response.text).not.toContain("OFFER-EXPIRED-24816");
+  });
+
+  it("returns not found when opening an expired offer", async () => {
+    const response = await request(app).get("/members/rec-24816/offers/OFFER-EXPIRED-24816");
+    expect(response.status).toBe(404);
+    expect(response.text).toContain("Offer not found");
+  });
+
+  it("returns not found when advancing an expired offer to final review", async () => {
+    const response = await request(app)
+      .get("/members/rec-24816/offers/OFFER-EXPIRED-24816/review")
+      .query({ vehicleType: "used" });
+    expect(response.status).toBe(404);
+    expect(response.text).toContain("Offer not found");
+  });
+
   it("renders the final review page without submitting the application", async () => {
     const response = await request(app)
       .get("/members/rec-24816/offers/OFFER-4421/review")
