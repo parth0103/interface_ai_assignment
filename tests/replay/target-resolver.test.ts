@@ -31,4 +31,18 @@ describe("target resolver", () => {
     }, ambiguous);
     expect(result.status).toBe("ambiguous");
   });
+
+  it("keeps the role when resolving semantic name containment", () => {
+    const form = {
+      ...observation,
+      accessibility: { controls: [{ role: "combobox", name: "Vehicle Type Select vehicle type New Used", enabled: true }] }
+    };
+    const result = resolveTarget({
+      id: "vehicle_type",
+      description: "Vehicle Type select",
+      fingerprint: { semantic: { role: "combobox", name_contains: "Vehicle Type" } },
+      confidence: { minimum: 0.85, signals: ["role_name_match", "unique_match"] }
+    }, form);
+    expect(result).toEqual({ status: "resolved", locator: "role=combobox[name*=\"Vehicle Type\"]", score: 0.9 });
+  });
 });

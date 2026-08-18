@@ -26,7 +26,7 @@ export function resolveTarget(target: Target, observation: Observation): TargetR
   }
   if (semantic?.role && semantic.name_contains) {
     const matches = observation.accessibility.controls.filter((control) => control.role === semantic.role && control.name.includes(semantic.name_contains ?? ""));
-    if (matches.length === 1) return { status: "resolved", locator: `text=${semantic.name_contains}`, score: 0.9 };
+    if (matches.length === 1) return { status: "resolved", locator: `role=${semantic.role}[name*="${semantic.name_contains}"]`, score: 0.9 };
     if (matches.length > 1) return { status: "ambiguous", code: "ambiguous_target", message: `Multiple controls matched ${target.description}` };
   }
   const anchor = target.fingerprint.visual?.anchor_text;

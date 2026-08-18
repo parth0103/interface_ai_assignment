@@ -46,9 +46,9 @@ function toResolvedAction(action: ProposedAction, locator: string, params: Recor
 }
 
 function inferPhase(intent: string): string {
+  if (/extract/.test(intent)) return "extract_outputs";
   if (/offer/.test(intent)) return "open_offer";
   if (/review|vehicle|continue/.test(intent)) return "advance_to_review";
-  if (/extract/.test(intent)) return "extract_outputs";
   return "find_member";
 }
 
