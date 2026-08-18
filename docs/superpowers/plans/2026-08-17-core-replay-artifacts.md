@@ -14,6 +14,7 @@ Replay must not call Gemini or any LLM provider.
 Replay must check safety before every action.
 Replay statuses are exactly `success`, `business_outcome`, `needs_human`, `failure`, and `blocked`.
 Interactive handoff must pause the same live session, transfer control to a human, record the human action, and resume before returning `success`.
+Outcome detection is driven by explicit artifact rules; regex is allowed only as an explicit detector type, not a broad fallback.
 Primary target strategy is semantic/visual/structural fingerprints with Playwright hints as fallback.
 Raw coordinates are not the primary replay strategy.
 Artifacts store output definitions and step metadata, not raw borrower PII.
@@ -1066,8 +1067,26 @@ describe("outcome detector", () => {
     expect(result).toMatchObject({ status: "business_outcome", code: "no_auto_loan_offer" });
   });
 
-  it("detects unknown modal text as needs_human", () => {
-    const result = detectOutcome(observationWithText("Unexpected Confirmation Required"), []);
+  it("detects an explicit regex outcome rule", () => {
+    const result = detectOutcome(observationWithText("Unexpected Confirmation Required"), [
+      { code: "unknown_confirmation", status: "needs_human", detect: { type: "text_regex", pattern: "confirmation required" }, message: "Confirmation requires human review." }
+    ]);
+    expect(result).toMatchObject({ status: "needs_human", code: "unknown_confirmation" });
+  });
+
+  it("does not treat generic required-field copy as an unknown modal", () => {
+    const result = detectOutcome(observationWithText("Member ID is required"), []);
+    expect(result).toEqual({ status: "continue" });
+  });
+
+  it("detects a dialog outcome from structured regions", () => {
+    const observed = {
+      ...observationWithText("Dashboard"),
+      structure: { tables: [], forms: [], regions: [{ name: "dialog", text: "Unexpected Confirmation Required" }] }
+    };
+    const result = detectOutcome(observed, [
+      { code: "unknown_modal", status: "needs_human", detect: { type: "dialog_visible", title_contains: "Confirmation" }, message: "Unknown modal requires human review." }
+    ]);
     expect(result).toMatchObject({ status: "needs_human", code: "unknown_modal" });
   });
 });
@@ -1108,9 +1127,17 @@ export function detectOutcome(observation: Observation, knownOutcomes: KnownOutc
     if (outcome.detect.type === "text_visible" && typeof outcome.detect.value === "string" && text.includes(outcome.detect.value)) {
       return { status: outcome.status, code: outcome.code, message: outcome.message ?? outcome.code };
     }
-  }
-  if (/unexpected confirmation|required/i.test(text)) {
-    return { status: "needs_human", code: "unknown_modal", message: "Unknown modal or confirmation requires human review." };
+    if (outcome.detect.type === "text_regex" && typeof outcome.detect.pattern === "string" && new RegExp(outcome.detect.pattern, "i").test(text)) {
+      return { status: outcome.status, code: outcome.code, message: outcome.message ?? outcome.code };
+    }
+    if (outcome.detect.type === "region_contains" && typeof outcome.detect.region === "string" && typeof outcome.detect.value === "string") {
+      const region = observation.structure.regions.find((item) => item.name === outcome.detect.region);
+      if (region?.text.includes(outcome.detect.value)) return { status: outcome.status, code: outcome.code, message: outcome.message ?? outcome.code };
+    }
+    if (outcome.detect.type === "dialog_visible" && typeof outcome.detect.title_contains === "string") {
+      const dialog = observation.structure.regions.find((item) => /dialog|modal/i.test(item.name));
+      if (dialog?.text.toLowerCase().includes(outcome.detect.title_contains.toLowerCase())) return { status: outcome.status, code: outcome.code, message: outcome.message ?? outcome.code };
+    }
   }
   return { status: "continue" };
 }
