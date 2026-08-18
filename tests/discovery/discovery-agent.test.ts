@@ -134,4 +134,35 @@ describe("runDiscovery", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("uses the actual visible title block when title casing differs", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "discovery-"));
+    try {
+      const surface = new SequenceSurface([
+        observedPage("Member Profile", ["Member Profile", "Offers"], [{ role: "tab", name: "Offers", enabled: true }]),
+        observedPage("Pre-approved Offers", ["Pre-approved offers"], []),
+        observedPage("Pre-approved Offers", ["Pre-approved offers"], [])
+      ]);
+      const result = await runDiscovery({
+        goal: "Open offers",
+        target: "http://localhost:3000",
+        params: {},
+        capability: autoLoanOfferReviewCapability,
+        llm: new MockLLMClient([
+          { decision: "act", reason_summary: "Open offers", action: { type: "click", intent: "open_offers_tab", target: { description: "Offers tab", semantic: { role: "tab", name: "Offers" } } } },
+          { decision: "finish", reason_summary: "Done", outputs: { review_status: "ready_for_final_review" } }
+        ]),
+        surface,
+        policy: createDefaultSafetyPolicy("demo"),
+        evidenceRoot: dir,
+        runId: "run_discovery",
+        maxSteps: 5
+      });
+
+      if (result.status !== "success") throw new Error("Expected discovery success.");
+      expect(result.artifact.steps[0].checkpoint).toEqual({ type: "text_visible", value: "Pre-approved offers" });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });

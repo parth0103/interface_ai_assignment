@@ -62,7 +62,10 @@ function defaultCheckpoint(action: ProposedAction): { type: "text_visible"; valu
 
 function checkpointFromPostAction(action: ProposedAction, visibleText: string[], title: string): { type: "text_visible"; value: unknown } | undefined {
   if (action.type === "extract") return defaultCheckpoint(action);
-  if (title && visibleText.some((block) => block.includes(title))) return { type: "text_visible", value: title };
+  const titleBlock = title
+    ? visibleText.find((block) => block.toLowerCase().includes(title.toLowerCase()))
+    : undefined;
+  if (titleBlock) return { type: "text_visible", value: titleBlock };
   return defaultCheckpoint(action);
 }
 
