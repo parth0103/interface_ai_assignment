@@ -19,6 +19,8 @@ type DiscoveryOptions = {
   evidenceRoot: string;
   runId: string;
   maxSteps: number;
+  llmDelayMs?: number;
+  wait?: (ms: number) => Promise<void>;
 };
 
 export type DiscoveryResult =
@@ -154,6 +156,10 @@ export async function runDiscovery(options: DiscoveryOptions): Promise<Discovery
       action: decision.action,
       checkpoint: checkpointFromPostAction(decision.action, postActionObservation.visual.visible_text_blocks, postActionObservation.state.title)
     });
+    if (options.llmDelayMs && options.llmDelayMs > 0) {
+      const wait = options.wait ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+      await wait(options.llmDelayMs);
+    }
   }
 
   return { status: "failure", code: "max_steps_exceeded", message: "Discovery exceeded max_steps." };

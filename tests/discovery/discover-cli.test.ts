@@ -8,13 +8,15 @@ describe("discover CLI args", () => {
       "--target", "http://localhost:3000",
       "--params", "examples/params/happy-path.json",
       "--out", "evidence/discovery-success",
-      "--llm", "mock"
+      "--llm", "mock",
+      "--llm-delay-ms", "16000"
     ])).toEqual({
       goal: "Find member 24816",
       target: "http://localhost:3000",
       paramsPath: "examples/params/happy-path.json",
       outDir: "evidence/discovery-success",
-      llmMode: "mock"
+      llmMode: "mock",
+      llmDelayMs: 16000
     });
   });
 });

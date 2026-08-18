@@ -16,6 +16,7 @@ export type DiscoverCliArgs = {
   paramsPath: string;
   outDir: string;
   llmMode: "gemini" | "mock";
+  llmDelayMs: number;
 };
 
 export function parseDiscoverArgs(argv: string[]): DiscoverCliArgs {
@@ -28,9 +29,10 @@ export function parseDiscoverArgs(argv: string[]): DiscoverCliArgs {
   const paramsPath = value("--params");
   const outDir = value("--out");
   const llmMode = (value("--llm") ?? process.env.LLM_MODE ?? "gemini") as "gemini" | "mock";
+  const llmDelayMs = Number(value("--llm-delay-ms") ?? process.env.DISCOVERY_LLM_DELAY_MS ?? "0");
   if (!goal || !target || !paramsPath || !outDir) throw new Error("Required flags: --goal, --target, --params, --out");
   if (llmMode !== "gemini" && llmMode !== "mock") throw new Error("--llm must be gemini or mock");
-  return { goal, target, paramsPath, outDir, llmMode };
+  return { goal, target, paramsPath, outDir, llmMode, llmDelayMs };
 }
 
 function createHappyPathMockDecisions(): AgentDecision[] {
@@ -76,7 +78,8 @@ async function main(): Promise<void> {
       policy: createDefaultSafetyPolicy("demo"),
       evidenceRoot: args.outDir,
       runId: "discovery",
-      maxSteps: 25
+      maxSteps: 25,
+      llmDelayMs: args.llmDelayMs
     });
     await mkdir("evidence", { recursive: true });
     if (result.status === "success") {
