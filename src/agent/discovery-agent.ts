@@ -4,6 +4,7 @@ import type { CapabilityDefinition } from "../capabilities/auto-loan-offer-revie
 import { createEvidenceLogger } from "../evidence/logger.js";
 import type { LLMClient, ProposedAction } from "../llm/types.js";
 import { resolveTarget } from "../replay/target-resolver.js";
+import { substituteParams } from "../shared/params.js";
 import type { SafetyPolicy } from "../safety/policy.js";
 import type { ActionResult, ResolvedAction, SurfaceAdapter } from "../surface/types.js";
 
@@ -33,13 +34,14 @@ type RecordedDiscoveryStep = {
   checkpoint?: { type: "text_visible" | "text_absent" | "url_contains"; value: unknown };
 };
 
-function toResolvedAction(action: ProposedAction, locator: string): ResolvedAction {
+function toResolvedAction(action: ProposedAction, locator: string, params: Record<string, unknown>): ResolvedAction {
+  const value = String(substituteParams(action.value, params) ?? "");
   if (action.type === "click") return { type: "click", locator };
-  if (action.type === "type") return { type: "type", locator, value: String(action.value ?? "") };
-  if (action.type === "select") return { type: "select", locator, value: String(action.value ?? "") };
+  if (action.type === "type") return { type: "type", locator, value };
+  if (action.type === "select") return { type: "select", locator, value };
   if (action.type === "extract") return { type: "extract", locator, output_key: action.output_key ?? "value" };
-  if (action.type === "assert") return { type: "assert", text: String(action.value ?? "") };
-  if (action.type === "wait") return { type: "wait", ms: Number(action.value ?? 500) };
+  if (action.type === "assert") return { type: "assert", text: value };
+  if (action.type === "wait") return { type: "wait", ms: Number(value || 500) };
   return { type: "wait", ms: 0 };
 }
 
@@ -123,9 +125,9 @@ export async function runDiscovery(options: DiscoveryOptions): Promise<Discovery
           message: resolution.message
         };
       }
-      actionResult = await options.surface.act(toResolvedAction(decision.action, resolution.locator));
+      actionResult = await options.surface.act(toResolvedAction(decision.action, resolution.locator, options.params));
     } else {
-      actionResult = await options.surface.act(toResolvedAction(decision.action, ""));
+      actionResult = await options.surface.act(toResolvedAction(decision.action, "", options.params));
     }
 
     if (!actionResult.ok) {

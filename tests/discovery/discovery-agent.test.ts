@@ -17,7 +17,7 @@ class FakeSurface implements SurfaceAdapter {
     return {
       state: { surface_kind: "browser", url: "http://localhost:3000", title: "Dashboard", recent_actions: [] },
       visual: { screenshot_path: "shot.png", send_to_llm: false, viewport: { width: 1, height: 1 }, visible_text_blocks: ["Dashboard", "Member Search"] },
-      accessibility: { controls: [{ role: "link", name: "Member Search", enabled: true }] },
+      accessibility: { controls: [{ role: "link", name: "Member Search", enabled: true }, { role: "textbox", name: "Member ID", enabled: true }] },
       structure: { tables: [], forms: [], regions: [] },
       policy: {}
     };
@@ -45,6 +45,7 @@ describe("runDiscovery", () => {
         capability: autoLoanOfferReviewCapability,
         llm: new MockLLMClient([
           { decision: "act", reason_summary: "Open search", action: { type: "click", intent: "open_member_search", target: { description: "Member Search link", semantic: { role: "link", name: "Member Search" } } } },
+          { decision: "act", reason_summary: "Type member id", action: { type: "type", intent: "type_member_id", target: { description: "Member ID field", semantic: { role: "textbox", name: "Member ID" } }, value: "{{member_id}}" } },
           { decision: "finish", reason_summary: "Done", outputs: { review_status: "ready_for_final_review" } }
         ]),
         surface,
@@ -57,7 +58,8 @@ describe("runDiscovery", () => {
       expect(result.status).toBe("success");
       if (result.status !== "success") throw new Error("Expected discovery success.");
       expect(result.artifact.capability.status).toBe("draft");
-      expect(surface.actions).toHaveLength(1);
+      expect(surface.actions).toHaveLength(2);
+      expect(surface.actions[1]).toMatchObject({ type: "type", value: "24816" });
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
