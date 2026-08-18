@@ -11,6 +11,8 @@ test-results/
 
 .worktrees
 
+evidence/test-browser-surface/
+
 .DS_Store
 
 # Local prompt/reference material, not part of the submission repo.
