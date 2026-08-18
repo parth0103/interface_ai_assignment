@@ -1,0 +1,401 @@
+{
+  "schema_version": "1.0",
+  "capability": {
+    "id": "prepare_auto_loan_offer_review",
+    "name": "Prepare Auto Loan Offer Review",
+    "status": "draft",
+    "risk_level": "moderate"
+  },
+  "surface": {
+    "kind": "browser",
+    "app_family": "loan_servicing_portal",
+    "supported_adapters": [
+      "browser.playwright"
+    ]
+  },
+  "contract": {
+    "inputs": {
+      "member_id": {
+        "type": "string",
+        "required": true
+      },
+      "offer_type": {
+        "type": "string",
+        "required": true
+      },
+      "vehicle_type": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "outputs": {
+      "review_status": {
+        "type": "string",
+        "sensitivity": "low"
+      }
+    }
+  },
+  "safety": {
+    "policy_profile": "demo"
+  },
+  "phases": [
+    {
+      "id": "find_member",
+      "description": "Find and open the member profile."
+    },
+    {
+      "id": "open_offer",
+      "description": "Open the active pre-approved auto loan offer."
+    },
+    {
+      "id": "advance_to_review",
+      "description": "Advance the offer to final review without submitting."
+    },
+    {
+      "id": "extract_outputs",
+      "description": "Extract final review fields."
+    }
+  ],
+  "steps": [
+    {
+      "id": "open_member_search",
+      "phase": "find_member",
+      "intent": "open_member_search",
+      "risk": "safe",
+      "action": {
+        "type": "click",
+        "target": {
+          "id": "open_member_search",
+          "description": "Member Search link in navigation",
+          "fingerprint": {
+            "semantic": {
+              "role": "link",
+              "name": "Member Search"
+            }
+          },
+          "confidence": {
+            "minimum": 0.85,
+            "signals": [
+              "role_name_match",
+              "visible_text_match",
+              "unique_match"
+            ]
+          }
+        }
+      },
+      "checkpoint": {
+        "type": "text_visible",
+        "value": "DashboardMember SearchLoan Queue"
+      }
+    },
+    {
+      "id": "type_member_id",
+      "phase": "find_member",
+      "intent": "type_member_id",
+      "risk": "safe",
+      "action": {
+        "type": "type",
+        "value": "{{member_id}}",
+        "target": {
+          "id": "type_member_id",
+          "description": "Member ID field",
+          "fingerprint": {
+            "semantic": {
+              "role": "textbox",
+              "name": "Member ID"
+            }
+          },
+          "confidence": {
+            "minimum": 0.85,
+            "signals": [
+              "role_name_match",
+              "visible_text_match",
+              "unique_match"
+            ]
+          }
+        }
+      },
+      "checkpoint": {
+        "type": "text_visible",
+        "value": "DashboardMember SearchLoan Queue"
+      }
+    },
+    {
+      "id": "search_member",
+      "phase": "find_member",
+      "intent": "search_member",
+      "risk": "safe",
+      "action": {
+        "type": "click",
+        "target": {
+          "id": "search_member",
+          "description": "Search button",
+          "fingerprint": {
+            "semantic": {
+              "role": "button",
+              "name": "Search"
+            }
+          },
+          "confidence": {
+            "minimum": 0.85,
+            "signals": [
+              "role_name_match",
+              "visible_text_match",
+              "unique_match"
+            ]
+          }
+        }
+      },
+      "checkpoint": {
+        "type": "text_visible",
+        "value": "DashboardMember SearchLoan Queue"
+      }
+    },
+    {
+      "id": "open_member",
+      "phase": "find_member",
+      "intent": "open_member",
+      "risk": "safe",
+      "action": {
+        "type": "click",
+        "target": {
+          "id": "open_member",
+          "description": "Open Member button for member {{member_id}}",
+          "fingerprint": {
+            "semantic": {
+              "role": "link",
+              "name": "Open Member"
+            },
+            "structure": {
+              "row": "{{member_id}}"
+            }
+          },
+          "confidence": {
+            "minimum": 0.85,
+            "signals": [
+              "role_name_match",
+              "visible_text_match",
+              "unique_match"
+            ]
+          }
+        }
+      },
+      "checkpoint": {
+        "type": "text_visible",
+        "value": "Member Profile"
+      }
+    },
+    {
+      "id": "open_offers_tab",
+      "phase": "open_offer",
+      "intent": "open_offers_tab",
+      "risk": "safe",
+      "action": {
+        "type": "click",
+        "target": {
+          "id": "open_offers_tab",
+          "description": "Offers tab",
+          "fingerprint": {
+            "semantic": {
+              "role": "tab",
+              "name": "Offers"
+            }
+          },
+          "confidence": {
+            "minimum": 0.85,
+            "signals": [
+              "role_name_match",
+              "visible_text_match",
+              "unique_match"
+            ]
+          }
+        }
+      },
+      "checkpoint": {
+        "type": "text_visible",
+        "value": "Pre-approved offers"
+      }
+    },
+    {
+      "id": "open_offer",
+      "phase": "open_offer",
+      "intent": "open_offer",
+      "risk": "safe",
+      "action": {
+        "type": "click",
+        "target": {
+          "id": "open_offer",
+          "description": "Open Offer link for Pre-approved Auto Loan",
+          "fingerprint": {
+            "semantic": {
+              "role": "link",
+              "name": "Open Offer"
+            },
+            "visual": {
+              "text": "Open Offer"
+            },
+            "structure": {
+              "row": "Pre-approved Auto Loan",
+              "column": "Action"
+            }
+          },
+          "confidence": {
+            "minimum": 0.85,
+            "signals": [
+              "role_name_match",
+              "visible_text_match",
+              "unique_match"
+            ]
+          }
+        }
+      },
+      "checkpoint": {
+        "type": "text_visible",
+        "value": "Offer Terms"
+      }
+    },
+    {
+      "id": "select_vehicle_type",
+      "phase": "advance_to_review",
+      "intent": "select_vehicle_type",
+      "risk": "safe",
+      "action": {
+        "type": "select",
+        "value": "Used",
+        "target": {
+          "id": "select_vehicle_type",
+          "description": "Vehicle Type dropdown",
+          "fingerprint": {
+            "semantic": {
+              "role": "combobox",
+              "name": "Vehicle Type"
+            }
+          },
+          "confidence": {
+            "minimum": 0.85,
+            "signals": [
+              "role_name_match",
+              "visible_text_match",
+              "unique_match"
+            ]
+          }
+        }
+      },
+      "checkpoint": {
+        "type": "text_visible",
+        "value": "Offer Terms"
+      }
+    },
+    {
+      "id": "continue_to_review",
+      "phase": "advance_to_review",
+      "intent": "continue_to_review",
+      "risk": "safe",
+      "action": {
+        "type": "click",
+        "target": {
+          "id": "continue_to_review",
+          "description": "Continue to Review button",
+          "fingerprint": {
+            "semantic": {
+              "role": "button",
+              "name": "Continue to Review"
+            }
+          },
+          "confidence": {
+            "minimum": 0.85,
+            "signals": [
+              "role_name_match",
+              "visible_text_match",
+              "unique_match"
+            ]
+          }
+        }
+      },
+      "checkpoint": {
+        "type": "text_visible",
+        "value": "Final Review"
+      }
+    },
+    {
+      "id": "extract_review_status",
+      "phase": "extract_outputs",
+      "intent": "extract_review_status",
+      "risk": "safe",
+      "action": {
+        "type": "extract",
+        "output_key": "review_status",
+        "target": {
+          "id": "extract_review_status",
+          "description": "Review Status text on Final Review screen",
+          "fingerprint": {
+            "visual": {
+              "text": "Review Status: Ready for final review"
+            }
+          },
+          "confidence": {
+            "minimum": 0.85,
+            "signals": [
+              "role_name_match",
+              "visible_text_match",
+              "unique_match"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "known_outcomes": [
+    {
+      "code": "member_not_found",
+      "status": "business_outcome",
+      "detect": {
+        "type": "text_visible",
+        "value": "No member found"
+      },
+      "message": "No member matched the supplied member_id."
+    },
+    {
+      "code": "no_auto_loan_offer",
+      "status": "business_outcome",
+      "detect": {
+        "type": "text_visible",
+        "value": "No active pre-approved auto loan offers"
+      },
+      "message": "Member has no active pre-approved auto loan offer."
+    },
+    {
+      "code": "ambiguous_member_match",
+      "status": "needs_human",
+      "detect": {
+        "type": "text_visible",
+        "value": "Multiple member records matched"
+      },
+      "message": "Multiple member records matched."
+    }
+  ],
+  "handoff": {
+    "mode": "same_session_cli",
+    "resume_checkpoint": {
+      "type": "text_visible",
+      "value": "Member Profile"
+    }
+  },
+  "compatibility": {
+    "app_family": "loan_servicing_portal",
+    "base_variant": "default",
+    "tested_variants": [
+      "default"
+    ],
+    "required_features": [
+      "member_search",
+      "member_profile",
+      "offers_tab",
+      "auto_loan_offer_review"
+    ]
+  },
+  "variant_overlays": {},
+  "evidence": {
+    "source_goal": "Find member {{member_id}}, open their pre-approved auto loan offer, and advance it to the final review screen. Extract the review status before finishing."
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "status": "needs_human",
+  "capability_id": "prepare_auto_loan_offer_review",
+  "run_id": "replay",
+  "step_id": "open_member",
+  "code": "ambiguous_target",
+  "message": "Multiple controls matched Open Member button for member {{member_id}}",
+  "evidence": {
+    "log": "evidence/replay-13-handoff/replay/run-log.jsonl"
+  }
+}

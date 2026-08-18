@@ -1,0 +1,11 @@
+{
+  "status": "business_outcome",
+  "capability_id": "prepare_auto_loan_offer_review",
+  "run_id": "replay",
+  "step_id": "open_offer",
+  "code": "no_auto_loan_offer",
+  "message": "Member has no active pre-approved auto loan offer.",
+  "evidence": {
+    "log": "evidence/replay-12-business-outcome/replay/run-log.jsonl"
+  }
+}
