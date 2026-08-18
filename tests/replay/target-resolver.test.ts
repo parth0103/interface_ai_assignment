@@ -59,4 +59,18 @@ describe("target resolver", () => {
     }, dashboard);
     expect(result).toEqual({ status: "resolved", locator: "role=link[name=\"Member Search\"]", score: 0.8 });
   });
+
+  it("resolves natural descriptions to unique controls by meaningful tokens", () => {
+    const termsPage = {
+      ...observation,
+      accessibility: { controls: [{ role: "combobox", name: "Vehicle Type Select vehicle type New Used", enabled: true }] }
+    };
+    const result = resolveTarget({
+      id: "vehicle_type",
+      description: "Vehicle Type dropdown",
+      fingerprint: {},
+      confidence: { minimum: 0.85, signals: ["description_token_match", "unique_match"] }
+    }, termsPage);
+    expect(result).toEqual({ status: "resolved", locator: "role=combobox[name=\"Vehicle Type Select vehicle type New Used\"]", score: 0.76 });
+  });
 });

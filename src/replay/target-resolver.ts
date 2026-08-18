@@ -21,6 +21,15 @@ function locatorForRoleName(role: string, name: string): string {
   return `role=${role}[name="${name}"]`;
 }
 
+const genericDescriptionTokens = new Set(["button", "link", "field", "input", "dropdown", "select", "navigation", "nav", "menu", "the", "a", "an"]);
+
+function meaningfulTokens(value: string): string[] {
+  return value
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length > 1 && !genericDescriptionTokens.has(token));
+}
+
 export function resolveTarget(target: Target, observation: Observation): TargetResolution {
   const semantic = target.fingerprint.semantic;
   if (semantic?.role && semantic.name) {
@@ -48,6 +57,20 @@ export function resolveTarget(target: Target, observation: Observation): TargetR
     return { status: "resolved", locator: locatorForRoleName(match.role, match.name), score: 0.8 };
   }
   if (descriptionMatches.length > 1) {
+    return { status: "ambiguous", code: "ambiguous_target", message: `Multiple controls matched ${target.description}` };
+  }
+  const descriptionTokens = meaningfulTokens(target.description);
+  const tokenMatches = descriptionTokens.length > 0
+    ? observation.accessibility.controls.filter((control) => {
+      const controlTokens = new Set(meaningfulTokens(control.name));
+      return control.enabled && descriptionTokens.every((token) => controlTokens.has(token));
+    })
+    : [];
+  if (tokenMatches.length === 1) {
+    const match = tokenMatches[0];
+    return { status: "resolved", locator: locatorForRoleName(match.role, match.name), score: 0.76 };
+  }
+  if (tokenMatches.length > 1) {
     return { status: "ambiguous", code: "ambiguous_target", message: `Multiple controls matched ${target.description}` };
   }
   return { status: "not_found", code: "target_not_found", message: `No target matched ${target.description}` };
