@@ -17,7 +17,7 @@ Gemini structured output must use the same response schema shape as local valida
 Discovery output starts as a `draft` artifact.
 Known outcomes come from explicit capability metadata, not hidden recorder logic or a single happy-path Gemini run.
 Replay must remain model-free after this plan.
-Screenshots are captured locally and are not sent to Gemini unless `SEND_SCREENSHOTS_TO_LLM=true`.
+Screenshots are captured locally and sent to Gemini only when `SEND_SCREENSHOTS_TO_LLM=true`; screenshot upload must include the image bytes, not just a local path.
 Mock LLM mode must support local repeatability without `GEMINI_API_KEY`.
 Real submitted evidence must include at least one Gemini discovery run.
 Every task uses TDD: write the failing test, verify failure, implement the minimum, verify pass, commit.
@@ -316,9 +316,19 @@ describe("discovery prompt", () => {
     expect(prompt).not.toContain("\"decision\":\"act\"");
   });
 
-  it("does not include local screenshot path when screenshots are not sent to the LLM", () => {
+  it("does not include local screenshot path when screenshot upload is disabled", () => {
     const prompt = buildDiscoveryPrompt({ goal: "Find member 24816", observation, params: { member_id: "24816" }, recentActions: [] });
     expect(prompt).not.toContain("evidence/shot.png");
+  });
+
+  it("includes the screenshot path only when screenshot upload is enabled for the observation", () => {
+    const prompt = buildDiscoveryPrompt({
+      goal: "Find member 24816",
+      observation: { ...observation, visual: { ...observation.visual, send_to_llm: true } },
+      params: { member_id: "24816" },
+      recentActions: []
+    });
+    expect(prompt).toContain("evidence/shot.png");
   });
 });
 ```
@@ -359,7 +369,7 @@ export function buildDiscoveryPrompt(input: {
     "- Params are user/workflow inputs. They may be redacted and should not be treated as page state unless the observation confirms them.",
     "- Recent actions are already attempted intents. Use them to avoid loops and repeated clicks.",
     "- State is the current browser/page state such as URL, title, and surface kind.",
-    "- Visual contains visible text and viewport details. screenshot_path is local-only unless send_to_llm is true.",
+    "- Visual contains visible text and viewport details. screenshot_path identifies the screenshot that may be attached as image input when send_to_llm is true.",
     "- Controls are accessibility-derived interactive elements such as links, buttons, tabs, inputs, and selects.",
     "- Structure describes tables, forms, regions, rows, and field context.",
     "- Policy describes blocked or restricted intents. Never propose blocked work.",
@@ -513,6 +523,9 @@ git commit -m "feat: add mock LLM client"
 Create `tests/discovery/gemini.test.ts`:
 
 ```typescript
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { geminiAgentDecisionResponseSchema } from "../../src/llm/action-schema.js";
 import { GeminiClient } from "../../src/llm/gemini.js";
@@ -547,6 +560,34 @@ describe("GeminiClient", () => {
       responseSchema: geminiAgentDecisionResponseSchema
     });
   });
+
+  it("attaches screenshot bytes when the observation opts into image input", async () => {
+    const dir = join(tmpdir(), "gemini-screenshot-test");
+    await mkdir(dir, { recursive: true });
+    const screenshotPath = join(dir, "shot.png");
+    await writeFile(screenshotPath, Buffer.from("fakepng"));
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: JSON.stringify({ decision: "finish", reason_summary: "Done", outputs: {} }) }] } }]
+    })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new GeminiClient({ apiKey: "key", model: "gemini-2.5-pro", sendScreenshots: true });
+    await client.decide({
+      goal: "g",
+      observation: {
+        state: { surface_kind: "browser", url: "http://localhost:3000", title: "Dashboard", recent_actions: [] },
+        visual: { screenshot_path: screenshotPath, send_to_llm: true, viewport: { width: 1, height: 1 }, visible_text_blocks: [] },
+        accessibility: { controls: [] },
+        structure: { tables: [], forms: [], regions: [] },
+        policy: {}
+      },
+      params: {},
+      recentActions: []
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string);
+    expect(body.contents[0].parts).toContainEqual({ inlineData: { mimeType: "image/png", data: Buffer.from("fakepng").toString("base64") } });
+  });
 });
 ```
 
@@ -565,21 +606,27 @@ Expected: FAIL because `GeminiClient` does not exist.
 Create `src/llm/gemini.ts`:
 
 ```typescript
+import { readFile } from "node:fs/promises";
 import { buildDiscoveryPrompt } from "./prompt.js";
 import { geminiAgentDecisionResponseSchema, parseAgentDecision } from "./action-schema.js";
 import type { LLMClient } from "./types.js";
 
 export class GeminiClient implements LLMClient {
-  constructor(private readonly config: { apiKey: string; model: string }) {}
+  constructor(private readonly config: { apiKey: string; model: string; sendScreenshots?: boolean }) {}
 
   async decide(input: Parameters<LLMClient["decide"]>[0]): ReturnType<LLMClient["decide"]> {
     const prompt = buildDiscoveryPrompt(input);
+    const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [{ text: prompt }];
+    if (this.config.sendScreenshots && input.observation.visual.send_to_llm) {
+      const image = await readFile(input.observation.visual.screenshot_path);
+      parts.push({ inlineData: { mimeType: "image/png", data: image.toString("base64") } });
+    }
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.config.model}:generateContent?key=${this.config.apiKey}`;
     const response = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        contents: [{ role: "user", parts }],
         generationConfig: {
           responseMimeType: "application/json",
           responseSchema: geminiAgentDecisionResponseSchema
@@ -1093,7 +1140,11 @@ function createLlm(mode: "gemini" | "mock"): LLMClient {
   if (mode === "mock") return new MockLLMClient(createHappyPathMockDecisions());
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is required for --llm gemini.");
-  return new GeminiClient({ apiKey, model: process.env.DISCOVERY_MODEL ?? "gemini-2.5-pro" });
+  return new GeminiClient({
+    apiKey,
+    model: process.env.DISCOVERY_MODEL ?? "gemini-2.5-pro",
+    sendScreenshots: process.env.SEND_SCREENSHOTS_TO_LLM === "true"
+  });
 }
 
 async function main(): Promise<void> {
@@ -1174,7 +1225,7 @@ no Gemini API key is required for mock mode
 Manual real-Gemini evidence command:
 
 ```bash
-LLM_MODE=gemini GEMINI_API_KEY=<redacted> npm run discover -- \
+LLM_MODE=gemini GEMINI_API_KEY=<redacted> SEND_SCREENSHOTS_TO_LLM=true npm run discover -- \
   --goal "Find member 24816, open their pre-approved auto loan offer, and advance it to the final review screen." \
   --target http://localhost:3000 \
   --params examples/params/happy-path.json \
@@ -1184,8 +1235,8 @@ LLM_MODE=gemini GEMINI_API_KEY=<redacted> npm run discover -- \
 Expected:
 
 ```text
-Gemini returns structured actions
+Gemini returns structured actions using structured observations plus screenshot image input
 the live browser is driven one action at a time
 artifact is written as draft
-screenshots remain local unless SEND_SCREENSHOTS_TO_LLM=true
+screenshots are attached to Gemini only because SEND_SCREENSHOTS_TO_LLM=true
 ```

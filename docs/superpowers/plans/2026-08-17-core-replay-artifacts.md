@@ -18,6 +18,7 @@ Primary target strategy is semantic/visual/structural fingerprints with Playwrig
 Raw coordinates are not the primary replay strategy.
 Artifacts store output definitions and step metadata, not raw borrower PII.
 Logs redact run params such as `member_id` to `****16`.
+Browser observations set `visual.send_to_llm` from `SEND_SCREENSHOTS_TO_LLM`; image bytes are attached only by the LLM client when that flag is true.
 Blocked loan intents stop before clicking.
 Every task uses TDD: write the failing test, verify failure, implement the minimum, verify pass, commit.
 
@@ -851,7 +852,7 @@ export class BrowserSurfaceAdapter implements SurfaceAdapter {
     );
     return {
       state: { surface_kind: "browser", url: this.page.url(), title: await this.page.title(), recent_actions: context.recent_actions },
-      visual: { screenshot_path: screenshot.path, send_to_llm: false, viewport, visible_text_blocks: bodyText.split("\n").map((line) => line.trim()).filter(Boolean) },
+      visual: { screenshot_path: screenshot.path, send_to_llm: process.env.SEND_SCREENSHOTS_TO_LLM === "true", viewport, visible_text_blocks: bodyText.split("\n").map((line) => line.trim()).filter(Boolean) },
       accessibility: { controls },
       structure: { tables: [], forms: [], regions: [{ name: "body", text: bodyText }] },
       policy: context.policy ?? {}
