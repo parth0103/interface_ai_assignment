@@ -60,6 +60,12 @@ function defaultCheckpoint(action: ProposedAction): { type: "text_visible"; valu
   return undefined;
 }
 
+function checkpointFromPostAction(action: ProposedAction, visibleText: string[], title: string): { type: "text_visible"; value: unknown } | undefined {
+  if (action.type === "extract") return defaultCheckpoint(action);
+  if (title && visibleText.some((block) => block.includes(title))) return { type: "text_visible", value: title };
+  return defaultCheckpoint(action);
+}
+
 export async function runDiscovery(options: DiscoveryOptions): Promise<DiscoveryResult> {
   const logger = await createEvidenceLogger(options.evidenceRoot, options.runId);
   await options.surface.open(options.target);
@@ -135,6 +141,7 @@ export async function runDiscovery(options: DiscoveryOptions): Promise<Discovery
     }
 
     const stepId = decision.action.intent;
+    const postActionObservation = await options.surface.observe({ recent_actions: [...recentActions, stepId, "post_action"] });
     recentActions.push(stepId);
     recordedSteps.push({
       id: stepId,
@@ -142,7 +149,7 @@ export async function runDiscovery(options: DiscoveryOptions): Promise<Discovery
       intent: decision.action.intent,
       risk: "safe",
       action: decision.action,
-      checkpoint: defaultCheckpoint(decision.action)
+      checkpoint: checkpointFromPostAction(decision.action, postActionObservation.visual.visible_text_blocks, postActionObservation.state.title)
     });
   }
 
