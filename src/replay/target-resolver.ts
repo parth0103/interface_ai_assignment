@@ -30,6 +30,10 @@ function meaningfulTokens(value: string): string[] {
     .filter((token) => token.length > 1 && !genericDescriptionTokens.has(token));
 }
 
+function titleFromTokens(tokens: string[]): string {
+  return tokens.map((token) => `${token.slice(0, 1).toUpperCase()}${token.slice(1)}`).join(" ");
+}
+
 export function resolveTarget(target: Target, observation: Observation): TargetResolution {
   const semantic = target.fingerprint.semantic;
   let deferredAmbiguous: TargetResolution | undefined;
@@ -69,7 +73,7 @@ export function resolveTarget(target: Target, observation: Observation): TargetR
     : [];
   if (tokenMatches.length === 1) {
     const match = tokenMatches[0];
-    return { status: "resolved", locator: locatorForRoleName(match.role, match.name), score: 0.76 };
+    return { status: "resolved", locator: `role=${match.role}[name*="${titleFromTokens(descriptionTokens)}"]`, score: 0.76 };
   }
   if (tokenMatches.length > 1) {
     return { status: "ambiguous", code: "ambiguous_target", message: `Multiple controls matched ${target.description}` };

@@ -71,7 +71,7 @@ describe("target resolver", () => {
       fingerprint: {},
       confidence: { minimum: 0.85, signals: ["description_token_match", "unique_match"] }
     }, termsPage);
-    expect(result).toEqual({ status: "resolved", locator: "role=combobox[name=\"Vehicle Type Select vehicle type New Used\"]", score: 0.76 });
+    expect(result).toEqual({ status: "resolved", locator: "role=combobox[name*=\"Vehicle Type\"]", score: 0.76 });
   });
 
   it("uses the description to disambiguate broad semantic containment", () => {
