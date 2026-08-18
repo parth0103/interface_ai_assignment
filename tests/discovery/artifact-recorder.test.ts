@@ -26,4 +26,37 @@ describe("artifact recorder", () => {
     expect(artifact.known_outcomes).toEqual(autoLoanOfferReviewCapability.known_outcomes);
     expect(JSON.stringify(artifact)).not.toContain("Maya Chen");
   });
+
+  it("parameterizes action values and target metadata that contain run inputs", () => {
+    const artifact = recordCapabilityArtifact({
+      capability: autoLoanOfferReviewCapability,
+      goal: "Find member 24816",
+      params: { member_id: "24816", vehicle_type: "used" },
+      steps: [
+        {
+          id: "type_member_id",
+          phase: "find_member",
+          intent: "type_member_id",
+          risk: "safe",
+          action: {
+            type: "type",
+            intent: "type_member_id",
+            value: "24816",
+            target: {
+              description: "Open Member link for member 24816",
+              semantic: { role: "textbox", name: "Member ID" },
+              structure: { row: "24816 - Maya Chen" }
+            }
+          }
+        }
+      ],
+      outputs: {}
+    });
+
+    expect(artifact.steps[0].action.value).toBe("{{member_id}}");
+    expect(artifact.steps[0].action.target?.description).toBe("Open Member link for member {{member_id}}");
+    expect(artifact.steps[0].action.target?.fingerprint.structure).toEqual({ row: "{{member_id}}" });
+    expect(JSON.stringify(artifact)).not.toContain("24816");
+    expect(JSON.stringify(artifact)).not.toContain("Maya Chen");
+  });
 });
