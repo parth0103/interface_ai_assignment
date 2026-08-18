@@ -19,4 +19,14 @@ describe("discover CLI args", () => {
       llmDelayMs: 16000
     });
   });
+
+  it("accepts claude as an Anthropic provider alias", () => {
+    expect(parseDiscoverArgs([
+      "--goal", "Find member 24816",
+      "--target", "http://localhost:3000",
+      "--params", "examples/params/happy-path.json",
+      "--out", "evidence/discovery-success",
+      "--llm", "claude"
+    ])).toMatchObject({ llmMode: "claude" });
+  });
 });

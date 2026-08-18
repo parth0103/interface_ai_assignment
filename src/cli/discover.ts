@@ -4,6 +4,7 @@ import "dotenv/config";
 import { chromium } from "playwright";
 import { runDiscovery } from "../agent/discovery-agent.js";
 import { autoLoanOfferReviewCapability } from "../capabilities/auto-loan-offer-review.js";
+import { AnthropicClient } from "../llm/anthropic.js";
 import { GeminiClient } from "../llm/gemini.js";
 import { MockLLMClient } from "../llm/mock.js";
 import type { AgentDecision, LLMClient } from "../llm/types.js";
@@ -15,7 +16,7 @@ export type DiscoverCliArgs = {
   target: string;
   paramsPath: string;
   outDir: string;
-  llmMode: "gemini" | "mock";
+  llmMode: "gemini" | "mock" | "anthropic" | "claude";
   llmDelayMs: number;
 };
 
@@ -28,10 +29,10 @@ export function parseDiscoverArgs(argv: string[]): DiscoverCliArgs {
   const target = value("--target");
   const paramsPath = value("--params");
   const outDir = value("--out");
-  const llmMode = (value("--llm") ?? process.env.LLM_MODE ?? "gemini") as "gemini" | "mock";
+  const llmMode = (value("--llm") ?? process.env.LLM_MODE ?? "gemini") as DiscoverCliArgs["llmMode"];
   const llmDelayMs = Number(value("--llm-delay-ms") ?? process.env.DISCOVERY_LLM_DELAY_MS ?? "0");
   if (!goal || !target || !paramsPath || !outDir) throw new Error("Required flags: --goal, --target, --params, --out");
-  if (llmMode !== "gemini" && llmMode !== "mock") throw new Error("--llm must be gemini or mock");
+  if (!["gemini", "mock", "anthropic", "claude"].includes(llmMode)) throw new Error("--llm must be gemini, mock, anthropic, or claude");
   return { goal, target, paramsPath, outDir, llmMode, llmDelayMs };
 }
 
@@ -50,8 +51,17 @@ function createHappyPathMockDecisions(): AgentDecision[] {
   ];
 }
 
-function createLlm(mode: "gemini" | "mock"): LLMClient {
+function createLlm(mode: DiscoverCliArgs["llmMode"]): LLMClient {
   if (mode === "mock") return new MockLLMClient(createHappyPathMockDecisions());
+  if (mode === "anthropic" || mode === "claude") {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) throw new Error("ANTHROPIC_API_KEY is required for --llm anthropic or --llm claude.");
+    return new AnthropicClient({
+      apiKey,
+      model: process.env.CLAUDE_MODEL ?? "claude-sonnet-5",
+      sendScreenshots: process.env.SEND_SCREENSHOTS_TO_LLM === "true"
+    });
+  }
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is required for --llm gemini.");
   return new GeminiClient({
