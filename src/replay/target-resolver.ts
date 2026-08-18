@@ -32,6 +32,7 @@ function meaningfulTokens(value: string): string[] {
 
 export function resolveTarget(target: Target, observation: Observation): TargetResolution {
   const semantic = target.fingerprint.semantic;
+  let deferredAmbiguous: TargetResolution | undefined;
   if (semantic?.role && semantic.name) {
     const matches = observation.accessibility.controls.filter((control) => control.role === semantic.role && control.name === semantic.name);
     if (matches.length === 1) return { status: "resolved", locator: locatorForRoleName(semantic.role, semantic.name), score: 1 };
@@ -40,7 +41,7 @@ export function resolveTarget(target: Target, observation: Observation): TargetR
   if (semantic?.role && semantic.name_contains) {
     const matches = observation.accessibility.controls.filter((control) => control.role === semantic.role && control.name.includes(semantic.name_contains ?? ""));
     if (matches.length === 1) return { status: "resolved", locator: `role=${semantic.role}[name*="${semantic.name_contains}"]`, score: 0.9 };
-    if (matches.length > 1) return { status: "ambiguous", code: "ambiguous_target", message: `Multiple controls matched ${target.description}` };
+    if (matches.length > 1) deferredAmbiguous = { status: "ambiguous", code: "ambiguous_target", message: `Multiple controls matched ${target.description}` };
   }
   const anchor = target.fingerprint.visual?.anchor_text;
   if (anchor && observation.visual.visible_text_blocks.some((block) => block.includes(anchor))) {
@@ -73,5 +74,6 @@ export function resolveTarget(target: Target, observation: Observation): TargetR
   if (tokenMatches.length > 1) {
     return { status: "ambiguous", code: "ambiguous_target", message: `Multiple controls matched ${target.description}` };
   }
+  if (deferredAmbiguous) return deferredAmbiguous;
   return { status: "not_found", code: "target_not_found", message: `No target matched ${target.description}` };
 }

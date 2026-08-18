@@ -73,4 +73,18 @@ describe("target resolver", () => {
     }, termsPage);
     expect(result).toEqual({ status: "resolved", locator: "role=combobox[name=\"Vehicle Type Select vehicle type New Used\"]", score: 0.76 });
   });
+
+  it("uses the description to disambiguate broad semantic containment", () => {
+    const searchResults = {
+      ...observation,
+      accessibility: { controls: [{ role: "link", name: "Member Search", enabled: true }, { role: "link", name: "Open Member", enabled: true }] }
+    };
+    const result = resolveTarget({
+      id: "open_member",
+      description: "Open Member button next to member ID 24816",
+      fingerprint: { semantic: { role: "link", name_contains: "Member" } },
+      confidence: { minimum: 0.85, signals: ["description_control_name_match", "unique_match"] }
+    }, searchResults);
+    expect(result).toEqual({ status: "resolved", locator: "role=link[name=\"Open Member\"]", score: 0.8 });
+  });
 });
