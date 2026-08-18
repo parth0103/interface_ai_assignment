@@ -12,7 +12,10 @@
 
 Gemini proposes actions but never executes browser operations directly.
 Gemini does not write Playwright code.
+The prompt must explain every observation layer and the exact decision contract before asking for an action.
+Gemini structured output must use the same response schema shape as local validation when the API supports it.
 Discovery output starts as a `draft` artifact.
+Known outcomes come from explicit capability metadata, not hidden recorder logic or a single happy-path Gemini run.
 Replay must remain model-free after this plan.
 Screenshots are captured locally and are not sent to Gemini unless `SEND_SCREENSHOTS_TO_LLM=true`.
 Mock LLM mode must support local repeatability without `GEMINI_API_KEY`.
@@ -49,7 +52,7 @@ This plan consumes `SurfaceAdapter`, `SafetyPolicy`, `EvidenceLogger`, and artif
 - Test: `tests/discovery/action-schema.test.ts`
 
 **Interfaces:**
-- Produces: `AgentDecision`, `ProposedAction`, `LLMClient`, `parseAgentDecision(value)`
+- Produces: `AgentDecision`, `ProposedAction`, `LLMClient`, `parseAgentDecision(value)`, `geminiAgentDecisionResponseSchema`
 - Consumes: none
 
 - [ ] **Step 1: Write the failing action schema tests**
@@ -58,7 +61,7 @@ Create `tests/discovery/action-schema.test.ts`:
 
 ```typescript
 import { describe, expect, it } from "vitest";
-import { parseAgentDecision } from "../../src/llm/action-schema.js";
+import { geminiAgentDecisionResponseSchema, parseAgentDecision } from "../../src/llm/action-schema.js";
 
 describe("LLM action schema", () => {
   it("accepts one bounded click action", () => {
@@ -96,6 +99,15 @@ describe("LLM action schema", () => {
     });
     expect(decision.decision).toBe("finish");
   });
+
+  it("exports a Gemini-compatible structured output schema", () => {
+    expect(geminiAgentDecisionResponseSchema.anyOf[0]).toMatchObject({
+      properties: {
+        decision: { type: "string", enum: ["act"] }
+      },
+      required: ["decision", "reason_summary", "action"]
+    });
+  });
 });
 ```
 
@@ -117,7 +129,7 @@ Create `src/llm/types.ts`:
 import type { Observation } from "../surface/types.js";
 
 export type ProposedAction = {
-  type: "click" | "type" | "select" | "extract" | "assert" | "wait" | "finish" | "escalate";
+  type: "click" | "type" | "select" | "extract" | "assert" | "wait";
   intent: string;
   target?: {
     description: string;
@@ -152,8 +164,69 @@ Create `src/llm/action-schema.ts`:
 import { z } from "zod";
 import type { AgentDecision } from "./types.js";
 
+export const geminiAgentDecisionResponseSchema = {
+  anyOf: [
+    {
+      type: "object",
+      properties: {
+        decision: { type: "string", enum: ["act"] },
+        reason_summary: { type: "string", description: "A short, non-executable explanation for the proposed decision." },
+        action: {
+          type: "object",
+          properties: {
+            type: { type: "string", enum: ["click", "type", "select", "extract", "assert", "wait"] },
+            intent: { type: "string", description: "Stable workflow intent, for example open_member_search." },
+            target: {
+              type: "object",
+              properties: {
+                description: { type: "string" },
+                semantic: { type: "object", description: "Accessibility clues such as role, name, label, or accessible state." },
+                visual: { type: "object", description: "Visible text, nearby text, or region hints." },
+                structure: { type: "object", description: "Table, form, row, column, section, or relative-position hints." }
+              },
+              required: ["description"]
+            },
+            value: {
+              anyOf: [
+                { type: "string" },
+                { type: "number" },
+                { type: "boolean" },
+                { type: "object" },
+                { type: "array", items: { type: "string" } },
+                { type: "null" }
+              ]
+            },
+            output_key: { type: "string" }
+          },
+          required: ["type", "intent"]
+        }
+      },
+      required: ["decision", "reason_summary", "action"]
+    },
+    {
+      type: "object",
+      properties: {
+        decision: { type: "string", enum: ["finish"] },
+        reason_summary: { type: "string" },
+        outputs: { type: "object" }
+      },
+      required: ["decision", "reason_summary", "outputs"]
+    },
+    {
+      type: "object",
+      properties: {
+        decision: { type: "string", enum: ["escalate"] },
+        reason_summary: { type: "string" },
+        code: { type: "string" },
+        message: { type: "string" }
+      },
+      required: ["decision", "reason_summary", "code", "message"]
+    }
+  ]
+} as const;
+
 const proposedActionSchema = z.object({
-  type: z.enum(["click", "type", "select", "extract", "assert", "wait", "finish", "escalate"]),
+  type: z.enum(["click", "type", "select", "extract", "assert", "wait"]),
   intent: z.string().min(1),
   target: z.object({
     description: z.string().min(1),
@@ -196,7 +269,7 @@ git commit -m "feat: add LLM action schema"
 
 ---
 
-### Task 2: Prompt Builder With Screenshot Privacy Defaults
+### Task 2: Prompt Builder With Explicit Input And Output Contract
 
 **Files:**
 - Create: `src/llm/prompt.ts`
@@ -227,7 +300,20 @@ describe("discovery prompt", () => {
     const prompt = buildDiscoveryPrompt({ goal: "Find member 24816", observation, params: { member_id: "24816" }, recentActions: [] });
     expect(prompt).toContain("Find member 24816");
     expect(prompt).toContain("Member Search");
-    expect(prompt).toContain("Return JSON only");
+    expect(prompt).toContain("Return exactly one JSON object");
+  });
+
+  it("explains the observation layers and how to use them", () => {
+    const prompt = buildDiscoveryPrompt({ goal: "Find member 24816", observation, params: { member_id: "24816" }, recentActions: [] });
+    expect(prompt).toContain("Controls are accessibility-derived");
+    expect(prompt).toContain("Prefer semantic targets");
+    expect(prompt).toContain("Use Structure for tables, forms, regions");
+  });
+
+  it("references the configured response schema instead of duplicating it", () => {
+    const prompt = buildDiscoveryPrompt({ goal: "Find member 24816", observation, params: { member_id: "24816" }, recentActions: [] });
+    expect(prompt).toContain("configured response schema");
+    expect(prompt).not.toContain("\"decision\":\"act\"");
   });
 
   it("does not include local screenshot path when screenshots are not sent to the LLM", () => {
@@ -266,7 +352,34 @@ export function buildDiscoveryPrompt(input: {
     : { ...input.observation.visual, screenshot_path: "[local-only]" };
   return [
     "You are driving a back-office computer surface one safe action at a time.",
-    "Return JSON only. Do not return Playwright code.",
+    "Return exactly one JSON object. Do not return markdown, prose, selectors, or Playwright code.",
+    "",
+    "Input fields:",
+    "- Goal is the workflow objective to complete.",
+    "- Params are user/workflow inputs. They may be redacted and should not be treated as page state unless the observation confirms them.",
+    "- Recent actions are already attempted intents. Use them to avoid loops and repeated clicks.",
+    "- State is the current browser/page state such as URL, title, and surface kind.",
+    "- Visual contains visible text and viewport details. screenshot_path is local-only unless send_to_llm is true.",
+    "- Controls are accessibility-derived interactive elements such as links, buttons, tabs, inputs, and selects.",
+    "- Structure describes tables, forms, regions, rows, and field context.",
+    "- Policy describes blocked or restricted intents. Never propose blocked work.",
+    "",
+    "Decision rules:",
+    "- Choose exactly one next decision: act, finish, or escalate.",
+    "- Use act for one safe next UI operation only.",
+    "- Use finish only when the goal is complete and required outputs are visible or extracted.",
+    "- Use escalate when the target is ambiguous, missing, unsafe, policy-blocked, or requires human judgment.",
+    "- Never submit, approve, price, disburse, or finalize a loan.",
+    "- Prefer semantic targets from Controls: role, name, label, accessible state.",
+    "- Use Visual for visible text, nearby text, and region hints.",
+    "- Use Structure for tables, forms, regions, rows, columns, and relative position.",
+    "- Do not invent CSS selectors, XPath selectors, raw coordinates, or Playwright locators.",
+    "",
+    "Response shape:",
+    "- Return one JSON object matching the configured response schema.",
+    "- The schema defines the exact fields for act, finish, and escalate decisions.",
+    "- Use reason_summary for audit context only; it is not executable.",
+    "",
     `Goal: ${input.goal}`,
     `Params: ${JSON.stringify(redactParams(input.params))}`,
     `Recent actions: ${JSON.stringify(input.recentActions)}`,
@@ -276,7 +389,7 @@ export function buildDiscoveryPrompt(input: {
     `Structure: ${JSON.stringify(input.observation.structure)}`,
     `Policy: ${JSON.stringify(input.observation.policy)}`,
     "Allowed decisions: act, finish, escalate.",
-    "Allowed action types: click, type, select, extract, assert, wait, finish, escalate."
+    "Allowed action types: click, type, select, extract, assert, wait."
   ].join("\n");
 }
 ```
@@ -401,6 +514,7 @@ Create `tests/discovery/gemini.test.ts`:
 
 ```typescript
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { geminiAgentDecisionResponseSchema } from "../../src/llm/action-schema.js";
 import { GeminiClient } from "../../src/llm/gemini.js";
 
 describe("GeminiClient", () => {
@@ -427,6 +541,11 @@ describe("GeminiClient", () => {
 
     expect(result.decision).toBe("finish");
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("gemini-2.5-pro"), expect.objectContaining({ method: "POST" }));
+    const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string);
+    expect(body.generationConfig).toMatchObject({
+      responseMimeType: "application/json",
+      responseSchema: geminiAgentDecisionResponseSchema
+    });
   });
 });
 ```
@@ -447,7 +566,7 @@ Create `src/llm/gemini.ts`:
 
 ```typescript
 import { buildDiscoveryPrompt } from "./prompt.js";
-import { parseAgentDecision } from "./action-schema.js";
+import { geminiAgentDecisionResponseSchema, parseAgentDecision } from "./action-schema.js";
 import type { LLMClient } from "./types.js";
 
 export class GeminiClient implements LLMClient {
@@ -461,7 +580,10 @@ export class GeminiClient implements LLMClient {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: "application/json" }
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: geminiAgentDecisionResponseSchema
+        }
       })
     });
     if (!response.ok) throw new Error(`Gemini request failed: ${response.status}`);
@@ -493,14 +615,15 @@ git commit -m "feat: add Gemini discovery client"
 
 ---
 
-### Task 5: Artifact Recorder
+### Task 5: Capability Definition And Artifact Recorder
 
 **Files:**
+- Create: `src/capabilities/auto-loan-offer-review.ts`
 - Create: `src/artifacts/recorder.ts`
 - Test: `tests/discovery/artifact-recorder.test.ts`
 
 **Interfaces:**
-- Produces: `recordCapabilityArtifact(input): CapabilityArtifact`
+- Produces: `autoLoanOfferReviewCapability`, `recordCapabilityArtifact(input): CapabilityArtifact`
 - Consumes: `AgentDecision`, `CapabilityArtifact`
 
 - [ ] **Step 1: Write the failing recorder test**
@@ -510,10 +633,12 @@ Create `tests/discovery/artifact-recorder.test.ts`:
 ```typescript
 import { describe, expect, it } from "vitest";
 import { recordCapabilityArtifact } from "../../src/artifacts/recorder.js";
+import { autoLoanOfferReviewCapability } from "../../src/capabilities/auto-loan-offer-review.js";
 
 describe("artifact recorder", () => {
-  it("converts validated discovery actions into a draft capability artifact", () => {
+  it("combines validated discovery actions with explicit capability metadata", () => {
     const artifact = recordCapabilityArtifact({
+      capability: autoLoanOfferReviewCapability,
       goal: "Find member 24816",
       params: { member_id: "24816", vehicle_type: "used" },
       steps: [
@@ -531,6 +656,7 @@ describe("artifact recorder", () => {
 
     expect(artifact.capability.status).toBe("draft");
     expect(artifact.steps[0].action.target?.fingerprint.semantic).toEqual({ role: "link", name: "Member Search" });
+    expect(artifact.known_outcomes).toEqual(autoLoanOfferReviewCapability.known_outcomes);
     expect(JSON.stringify(artifact)).not.toContain("Maya Chen");
   });
 });
@@ -544,14 +670,68 @@ Run:
 npm test -- tests/discovery/artifact-recorder.test.ts
 ```
 
-Expected: FAIL because `recorder.ts` does not exist.
+Expected: FAIL because `recorder.ts` and the capability definition do not exist.
 
-- [ ] **Step 3: Implement the recorder**
+- [ ] **Step 3: Implement the capability definition**
+
+Create `src/capabilities/auto-loan-offer-review.ts`:
+
+```typescript
+import type { CapabilityArtifact } from "../artifacts/schema.js";
+
+export type CapabilityDefinition = Pick<
+  CapabilityArtifact,
+  "capability" | "surface" | "contract" | "safety" | "phases" | "known_outcomes" | "handoff" | "compatibility" | "variant_overlays"
+>;
+
+export const autoLoanOfferReviewCapability: CapabilityDefinition = {
+  capability: {
+    id: "prepare_auto_loan_offer_review",
+    name: "Prepare Auto Loan Offer Review",
+    status: "draft",
+    risk_level: "moderate"
+  },
+  surface: { kind: "browser", app_family: "loan_servicing_portal", supported_adapters: ["browser.playwright"] },
+  contract: {
+    inputs: {
+      member_id: { type: "string", required: true },
+      offer_type: { type: "string", required: true },
+      vehicle_type: { type: "string", required: true }
+    },
+    outputs: {
+      member_name: { type: "string", sensitivity: "pii" },
+      offer_id: { type: "string", sensitivity: "internal" },
+      apr: { type: "string", sensitivity: "low" },
+      max_amount: { type: "currency", sensitivity: "financial" },
+      term_months: { type: "number", sensitivity: "low" },
+      review_status: { type: "string", sensitivity: "low" }
+    }
+  },
+  safety: { policy_profile: "demo" },
+  phases: [
+    { id: "find_member", description: "Find and open the member profile." },
+    { id: "open_offer", description: "Open the active pre-approved auto loan offer." },
+    { id: "advance_to_review", description: "Advance the offer to final review without submitting." },
+    { id: "extract_outputs", description: "Extract final review fields." }
+  ],
+  known_outcomes: [
+    { code: "member_not_found", status: "business_outcome", detect: { type: "text_visible", value: "No member found" }, message: "No member matched the supplied member_id." },
+    { code: "no_auto_loan_offer", status: "business_outcome", detect: { type: "text_visible", value: "No active pre-approved auto loan offers" }, message: "Member has no active pre-approved auto loan offer." },
+    { code: "ambiguous_member_match", status: "needs_human", detect: { type: "multiple_rows_match", table: "member_results", match: "{{member_id}}" }, message: "Multiple member records matched." }
+  ],
+  handoff: { mode: "same_session_cli", resume_checkpoint: "member_profile_visible" },
+  compatibility: { app_family: "loan_servicing_portal", base_variant: "default", tested_variants: ["default"], required_features: ["member_search", "member_profile", "offers_tab", "auto_loan_offer_review"] },
+  variant_overlays: {}
+};
+```
+
+- [ ] **Step 4: Implement the recorder**
 
 Create `src/artifacts/recorder.ts`:
 
 ```typescript
 import type { CapabilityArtifact } from "./schema.js";
+import type { CapabilityDefinition } from "../capabilities/auto-loan-offer-review.js";
 import type { ProposedAction } from "../llm/types.js";
 
 type RecordedStep = {
@@ -564,6 +744,7 @@ type RecordedStep = {
 };
 
 export function recordCapabilityArtifact(input: {
+  capability: CapabilityDefinition;
   goal: string;
   params: Record<string, unknown>;
   steps: RecordedStep[];
@@ -571,35 +752,11 @@ export function recordCapabilityArtifact(input: {
 }): CapabilityArtifact {
   return {
     schema_version: "1.0",
-    capability: {
-      id: "prepare_auto_loan_offer_review",
-      name: "Prepare Auto Loan Offer Review",
-      status: "draft",
-      risk_level: "moderate"
-    },
-    surface: { kind: "browser", app_family: "loan_servicing_portal", supported_adapters: ["browser.playwright"] },
-    contract: {
-      inputs: {
-        member_id: { type: "string", required: true },
-        offer_type: { type: "string", required: true },
-        vehicle_type: { type: "string", required: true }
-      },
-      outputs: {
-        member_name: { type: "string", sensitivity: "pii" },
-        offer_id: { type: "string", sensitivity: "internal" },
-        apr: { type: "string", sensitivity: "low" },
-        max_amount: { type: "currency", sensitivity: "financial" },
-        term_months: { type: "number", sensitivity: "low" },
-        review_status: { type: "string", sensitivity: "low" }
-      }
-    },
-    safety: { policy_profile: "demo" },
-    phases: [
-      { id: "find_member", description: "Find and open the member profile." },
-      { id: "open_offer", description: "Open the active pre-approved auto loan offer." },
-      { id: "advance_to_review", description: "Advance the offer to final review without submitting." },
-      { id: "extract_outputs", description: "Extract final review fields." }
-    ],
+    capability: input.capability.capability,
+    surface: input.capability.surface,
+    contract: input.capability.contract,
+    safety: input.capability.safety,
+    phases: input.capability.phases,
     steps: input.steps.map((step) => ({
       id: step.id,
       phase: step.phase,
@@ -622,20 +779,16 @@ export function recordCapabilityArtifact(input: {
       },
       checkpoint: step.checkpoint
     })),
-    known_outcomes: [
-      { code: "member_not_found", status: "business_outcome", detect: { type: "text_visible", value: "No member found" }, message: "No member matched the supplied member_id." },
-      { code: "no_auto_loan_offer", status: "business_outcome", detect: { type: "text_visible", value: "No active pre-approved auto loan offers" }, message: "Member has no active pre-approved auto loan offer." },
-      { code: "ambiguous_member_match", status: "needs_human", detect: { type: "multiple_rows_match", table: "member_results", match: "{{member_id}}" }, message: "Multiple member records matched." }
-    ],
-    handoff: { mode: "same_session_cli" },
-    compatibility: { app_family: "loan_servicing_portal", base_variant: "default", tested_variants: ["default"], required_features: ["member_search", "member_profile", "offers_tab", "auto_loan_offer_review"] },
-    variant_overlays: {},
+    known_outcomes: input.capability.known_outcomes,
+    handoff: input.capability.handoff,
+    compatibility: input.capability.compatibility,
+    variant_overlays: input.capability.variant_overlays,
     evidence: { source_goal: input.goal }
   };
 }
 ```
 
-- [ ] **Step 4: Run tests and typecheck**
+- [ ] **Step 5: Run tests and typecheck**
 
 Run:
 
@@ -646,10 +799,10 @@ npm run typecheck
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/artifacts/recorder.ts tests/discovery/artifact-recorder.test.ts
+git add src/capabilities/auto-loan-offer-review.ts src/artifacts/recorder.ts tests/discovery/artifact-recorder.test.ts
 git commit -m "feat: add artifact recorder"
 ```
 
@@ -663,7 +816,7 @@ git commit -m "feat: add artifact recorder"
 
 **Interfaces:**
 - Produces: `runDiscovery(options): Promise<DiscoveryResult>`
-- Consumes: `LLMClient`, `SurfaceAdapter`, `SafetyPolicy`, `EvidenceLogger`, `recordCapabilityArtifact`
+- Consumes: `LLMClient`, `SurfaceAdapter`, `SafetyPolicy`, `EvidenceLogger`, `recordCapabilityArtifact`, `CapabilityDefinition`
 
 - [ ] **Step 1: Write the failing discovery agent test with fake dependencies**
 
@@ -675,6 +828,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { runDiscovery } from "../../src/agent/discovery-agent.js";
+import { autoLoanOfferReviewCapability } from "../../src/capabilities/auto-loan-offer-review.js";
 import { MockLLMClient } from "../../src/llm/mock.js";
 import { createDefaultSafetyPolicy } from "../../src/safety/policy.js";
 import type { SurfaceAdapter, Observation, ResolvedAction, ActionResult, EvidenceRef, ObservationContext } from "../../src/surface/types.js";
@@ -704,6 +858,7 @@ describe("runDiscovery", () => {
         goal: "Find member 24816",
         target: "http://localhost:3000",
         params: { member_id: "24816", vehicle_type: "used" },
+        capability: autoLoanOfferReviewCapability,
         llm: new MockLLMClient([
           { decision: "act", reason_summary: "Open search", action: { type: "click", intent: "open_member_search", target: { description: "Member Search link", semantic: { role: "link", name: "Member Search" } } } },
           { decision: "finish", reason_summary: "Done", outputs: { review_status: "ready_for_final_review" } }
@@ -742,6 +897,7 @@ Create `src/agent/discovery-agent.ts`:
 import { createEvidenceLogger } from "../evidence/logger.js";
 import type { CapabilityArtifact } from "../artifacts/schema.js";
 import { recordCapabilityArtifact } from "../artifacts/recorder.js";
+import type { CapabilityDefinition } from "../capabilities/auto-loan-offer-review.js";
 import type { LLMClient, ProposedAction } from "../llm/types.js";
 import type { SafetyPolicy } from "../safety/policy.js";
 import type { SurfaceAdapter, ResolvedAction } from "../surface/types.js";
@@ -751,6 +907,7 @@ type DiscoveryOptions = {
   goal: string;
   target: string;
   params: Record<string, unknown>;
+  capability: CapabilityDefinition;
   llm: LLMClient;
   surface: SurfaceAdapter;
   policy: SafetyPolicy;
@@ -785,7 +942,7 @@ export async function runDiscovery(options: DiscoveryOptions): Promise<Discovery
     await logger.event({ event: "llm_decision", actor: "gemini", status: "ok", step_id: `discovery_${stepIndex}`, reason_summary: decision.reason_summary, params: options.params });
 
     if (decision.decision === "finish") {
-      const artifact = recordCapabilityArtifact({ goal: options.goal, params: options.params, steps: recordedSteps, outputs: decision.outputs });
+      const artifact = recordCapabilityArtifact({ capability: options.capability, goal: options.goal, params: options.params, steps: recordedSteps, outputs: decision.outputs });
       return { status: "success", artifact };
     }
     if (decision.decision === "escalate") {
@@ -847,7 +1004,7 @@ git commit -m "feat: add discovery agent loop"
 
 **Interfaces:**
 - Produces CLI: `npm run discover -- --goal <goal> --target <url> --params <path> --out <dir>`
-- Consumes: `runDiscovery`, `MockLLMClient`, `GeminiClient`, `BrowserSurfaceAdapter`
+- Consumes: `runDiscovery`, `MockLLMClient`, `GeminiClient`, `BrowserSurfaceAdapter`, `autoLoanOfferReviewCapability`
 
 - [ ] **Step 1: Write failing CLI parser test**
 
@@ -896,6 +1053,7 @@ import { join } from "node:path";
 import "dotenv/config";
 import { chromium } from "playwright";
 import { runDiscovery } from "../agent/discovery-agent.js";
+import { autoLoanOfferReviewCapability } from "../capabilities/auto-loan-offer-review.js";
 import { GeminiClient } from "../llm/gemini.js";
 import { MockLLMClient } from "../llm/mock.js";
 import type { AgentDecision, LLMClient } from "../llm/types.js";
@@ -948,6 +1106,7 @@ async function main(): Promise<void> {
     goal: args.goal,
     target: args.target,
     params,
+    capability: autoLoanOfferReviewCapability,
     llm: createLlm(args.llmMode),
     surface,
     policy: createDefaultSafetyPolicy("demo"),
@@ -1030,4 +1189,3 @@ the live browser is driven one action at a time
 artifact is written as draft
 screenshots remain local unless SEND_SCREENSHOTS_TO_LLM=true
 ```
-

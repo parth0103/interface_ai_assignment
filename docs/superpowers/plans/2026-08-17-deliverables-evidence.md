@@ -116,7 +116,7 @@ Replay does not call Gemini. Replay loads the artifact, validates parameters, ap
 
 ## Artifact schema
 
-The artifact is a hybrid capability artifact rather than a Playwright script. It has a contract layer and an execution recipe. The contract defines the capability ID, inputs, outputs, known business outcomes, safety policy, and compatibility metadata. The recipe defines phases, deterministic steps, target fingerprints, checkpoints, and recovery behavior.
+The artifact is a hybrid capability artifact rather than a Playwright script. It has a contract layer and an execution recipe. The contract defines the capability ID, inputs, outputs, known business outcomes, safety policy, and compatibility metadata. Known outcomes are declarative capability metadata, not hidden recorder logic inferred from a single happy-path run. The recipe defines phases, deterministic steps, target fingerprints, checkpoints, and recovery behavior.
 
 Each target is represented as a layered fingerprint: semantic role/name, visible text anchors, structural region, and adapter-specific hints. Playwright hints are useful for this implementation, but they are not the primary conceptual model.
 
@@ -586,7 +586,7 @@ const runs = {
   "discovery-success": { status: "success", capability_id: "prepare_auto_loan_offer_review", run_id: "discovery", message: "Gemini discovery completed against synthetic portal.", evidence: {} },
   "replay-success": { status: "success", capability_id: "prepare_auto_loan_offer_review", run_id: "replay_success", message: "Replay reached final review.", evidence: {} },
   "replay-business-outcome": { status: "business_outcome", capability_id: "prepare_auto_loan_offer_review", run_id: "replay_business", code: "no_auto_loan_offer", message: "Member has no active pre-approved auto loan offer.", evidence: {} },
-  "replay-handoff": { status: "needs_human", capability_id: "prepare_auto_loan_offer_review", run_id: "replay_handoff", code: "ambiguous_member_match", message: "Multiple member records matched.", evidence: {} },
+  "replay-handoff": { status: "success", capability_id: "prepare_auto_loan_offer_review", run_id: "replay_handoff", message: "Replay resumed after same-session human handoff.", evidence: {} },
   "replay-blocked-policy": { status: "blocked", capability_id: "prepare_auto_loan_offer_review", run_id: "replay_blocked", code: "policy_violation", step_id: "submit_final_application", message: "Blocked forbidden loan action: submit_final_application.", evidence: {} }
 };
 
@@ -600,6 +600,8 @@ export async function generateMockEvidence(root = "evidence"): Promise<void> {
     await writeFile(join(runDir, "run-log.jsonl"), `${JSON.stringify({ event: "mock_evidence", status: result.status })}\n`);
   }
   await writeFile(join(root, "replay-handoff", "intervention-request.json"), `${JSON.stringify({ controller: "human", reason: "ambiguous_member_match" }, null, 2)}\n`);
+  await writeFile(join(root, "replay-handoff", "human-resume.json"), `${JSON.stringify({ human_summary: "Operator selected the correct member row.", resume_checkpoint: "member_profile_visible" }, null, 2)}\n`);
+  await writeFile(join(root, "replay-handoff", "control-lease.json"), `${JSON.stringify({ controller: "automation", reason: "ambiguous_member_match" }, null, 2)}\n`);
 }
 
 if (process.argv[1]?.endsWith("generate-mock-evidence.ts")) {
@@ -750,7 +752,9 @@ automation pauses
 intervention-request.json is written
 human uses same browser session
 human resumes
-result is needs_human or success-after-resume depending on implemented resume behavior
+human-resume.json is written
+control-lease.json returns to automation
+status=success after resume
 ```
 
 - [ ] **Step 7: Run blocked policy scenario**
@@ -888,4 +892,3 @@ evidence directory contains artifact, logs, results, and handoff/blocking proof
 ```
 
 At the end of this plan, the repository has the assignment-facing deliverables.
-
