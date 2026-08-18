@@ -6,6 +6,7 @@ export function buildDiscoveryPrompt(input: {
   observation: Observation;
   params: Record<string, unknown>;
   recentActions: string[];
+  requiredOutputs?: string[];
 }): string {
   const visual = input.observation.visual.send_to_llm
     ? input.observation.visual
@@ -28,7 +29,8 @@ export function buildDiscoveryPrompt(input: {
     "Decision rules:",
     "- Choose exactly one next decision: act, finish, or escalate.",
     "- Use act for one safe next UI operation only.",
-    "- Use finish only when the goal is complete and required outputs are visible or extracted.",
+    "- Use finish only when the goal is complete and required outputs have already been extracted.",
+    "- Use extract actions for required outputs before finish. Do not put required outputs only in the finish decision.",
     "- Use escalate when the target is ambiguous, missing, unsafe, policy-blocked, or requires human judgment.",
     "- Never submit, approve, price, disburse, or finalize a loan.",
     "- Prefer semantic targets from Controls: role, name, label, accessible state.",
@@ -44,6 +46,7 @@ export function buildDiscoveryPrompt(input: {
     `Goal: ${input.goal}`,
     `Params: ${JSON.stringify(redactParams(input.params))}`,
     `Recent actions: ${JSON.stringify(input.recentActions)}`,
+    `Required outputs: ${JSON.stringify(input.requiredOutputs ?? [])}`,
     `State: ${JSON.stringify(input.observation.state)}`,
     `Visual: ${JSON.stringify(visual)}`,
     `Controls: ${JSON.stringify(input.observation.accessibility.controls)}`,

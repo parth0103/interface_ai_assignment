@@ -31,6 +31,19 @@ describe("discovery prompt", () => {
     expect(prompt).not.toContain("\"decision\":\"act\"");
   });
 
+  it("tells the model to extract required outputs before finishing", () => {
+    const prompt = buildDiscoveryPrompt({
+      goal: "Find member 24816",
+      observation,
+      params: { member_id: "24816" },
+      recentActions: [],
+      requiredOutputs: ["review_status"]
+    });
+
+    expect(prompt).toContain("Required outputs: [\"review_status\"]");
+    expect(prompt).toContain("Use extract actions for required outputs before finish");
+  });
+
   it("does not include local screenshot path when screenshot upload is disabled", () => {
     const prompt = buildDiscoveryPrompt({ goal: "Find member 24816", observation, params: { member_id: "24816" }, recentActions: [] });
     expect(prompt).not.toContain("evidence/shot.png");

@@ -21,7 +21,7 @@ function locatorForRoleName(role: string, name: string): string {
   return `role=${role}[name="${name}"]`;
 }
 
-const genericDescriptionTokens = new Set(["button", "link", "field", "input", "dropdown", "select", "navigation", "nav", "menu", "the", "a", "an"]);
+const genericDescriptionTokens = new Set(["button", "link", "field", "input", "dropdown", "select", "navigation", "nav", "menu", "text", "screen", "on", "the", "a", "an"]);
 
 function meaningfulTokens(value: string): string[] {
   return value
@@ -41,6 +41,11 @@ export function resolveTarget(target: Target, observation: Observation): TargetR
     const matches = observation.accessibility.controls.filter((control) => control.role === semantic.role && control.name === semantic.name);
     if (matches.length === 1) return { status: "resolved", locator: locatorForRoleName(semantic.role, semantic.name), score: 1 };
     if (matches.length > 1) return { status: "ambiguous", code: "ambiguous_target", message: `Multiple controls matched ${target.description}` };
+    const containsMatches = observation.accessibility.controls.filter((control) =>
+      control.enabled && control.role === semantic.role && control.name.includes(semantic.name ?? "")
+    );
+    if (containsMatches.length === 1) return { status: "resolved", locator: `role=${semantic.role}[name*="${semantic.name}"]`, score: 0.92 };
+    if (containsMatches.length > 1) deferredAmbiguous = { status: "ambiguous", code: "ambiguous_target", message: `Multiple controls matched ${target.description}` };
   }
   if (semantic?.role && semantic.name_contains) {
     const matches = observation.accessibility.controls.filter((control) => control.role === semantic.role && control.name.includes(semantic.name_contains ?? ""));
@@ -77,6 +82,19 @@ export function resolveTarget(target: Target, observation: Observation): TargetR
   }
   if (tokenMatches.length > 1) {
     return { status: "ambiguous", code: "ambiguous_target", message: `Multiple controls matched ${target.description}` };
+  }
+  const visibleTextTokens = descriptionTokens.slice(0, 2);
+  const visibleTextMatches = visibleTextTokens.length >= 2
+    ? observation.visual.visible_text_blocks.filter((block) => {
+      const blockTokens = new Set(meaningfulTokens(block));
+      return visibleTextTokens.every((token) => blockTokens.has(token));
+    })
+    : [];
+  if (visibleTextMatches.length === 1) {
+    return { status: "resolved", locator: `text=${visibleTextMatches[0]}`, score: 0.74 };
+  }
+  if (visibleTextMatches.length > 1) {
+    return { status: "ambiguous", code: "ambiguous_target", message: `Multiple text blocks matched ${target.description}` };
   }
   if (deferredAmbiguous) return deferredAmbiguous;
   return { status: "not_found", code: "target_not_found", message: `No target matched ${target.description}` };

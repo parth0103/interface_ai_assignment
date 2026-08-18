@@ -71,6 +71,15 @@ function checkpointFromPostAction(action: ProposedAction, visibleText: string[],
   return defaultCheckpoint(action);
 }
 
+function missingOutputExtractions(capability: CapabilityDefinition, steps: RecordedDiscoveryStep[]): string[] {
+  const extracted = new Set(
+    steps
+      .filter((step) => step.action.type === "extract")
+      .map((step) => step.action.output_key ?? step.id)
+  );
+  return Object.keys(capability.contract.outputs ?? {}).filter((key) => !extracted.has(key));
+}
+
 export async function runDiscovery(options: DiscoveryOptions): Promise<DiscoveryResult> {
   const logger = await createEvidenceLogger(options.evidenceRoot, options.runId);
   await options.surface.open(options.target);
@@ -79,7 +88,13 @@ export async function runDiscovery(options: DiscoveryOptions): Promise<Discovery
 
   for (let stepIndex = 0; stepIndex < options.maxSteps; stepIndex += 1) {
     const observation = await options.surface.observe({ recent_actions: recentActions });
-    const decision = await options.llm.decide({ goal: options.goal, observation, params: options.params, recentActions });
+    const decision = await options.llm.decide({
+      goal: options.goal,
+      observation,
+      params: options.params,
+      recentActions,
+      requiredOutputs: Object.keys(options.capability.contract.outputs ?? {})
+    });
     await logger.event({
       event: "llm_decision",
       actor: "gemini",
@@ -90,6 +105,14 @@ export async function runDiscovery(options: DiscoveryOptions): Promise<Discovery
     });
 
     if (decision.decision === "finish") {
+      const missingOutputs = missingOutputExtractions(options.capability, recordedSteps);
+      if (missingOutputs.length > 0) {
+        return {
+          status: "failure",
+          code: "missing_output_extraction",
+          message: `Discovery cannot finish until declared outputs have extract steps: ${missingOutputs.join(", ")}.`
+        };
+      }
       const artifact = recordCapabilityArtifact({
         capability: options.capability,
         goal: options.goal,

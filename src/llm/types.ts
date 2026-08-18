@@ -24,5 +24,6 @@ export type LLMClient = {
     observation: Observation;
     params: Record<string, unknown>;
     recentActions: string[];
+    requiredOutputs?: string[];
   }): Promise<AgentDecision>;
 };

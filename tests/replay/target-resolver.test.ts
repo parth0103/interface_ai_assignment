@@ -46,6 +46,20 @@ describe("target resolver", () => {
     expect(result).toEqual({ status: "resolved", locator: "role=combobox[name*=\"Vehicle Type\"]", score: 0.9 });
   });
 
+  it("falls back to unique same-role name containment for native label text", () => {
+    const form = {
+      ...observation,
+      accessibility: { controls: [{ role: "combobox", name: "Vehicle Type Select vehicle type New Used", enabled: true }] }
+    };
+    const result = resolveTarget({
+      id: "vehicle_type",
+      description: "Vehicle Type combobox",
+      fingerprint: { semantic: { role: "combobox", name: "Vehicle Type" } },
+      confidence: { minimum: 0.85, signals: ["role_name_match", "unique_match"] }
+    }, form);
+    expect(result).toEqual({ status: "resolved", locator: "role=combobox[name*=\"Vehicle Type\"]", score: 0.92 });
+  });
+
   it("resolves a unique accessible control mentioned in the target description", () => {
     const dashboard = {
       ...observation,
@@ -72,6 +86,24 @@ describe("target resolver", () => {
       confidence: { minimum: 0.85, signals: ["description_token_match", "unique_match"] }
     }, termsPage);
     expect(result).toEqual({ status: "resolved", locator: "role=combobox[name*=\"Vehicle Type\"]", score: 0.76 });
+  });
+
+  it("resolves unique visible text blocks from extraction descriptions", () => {
+    const finalReview = {
+      ...observation,
+      visual: {
+        ...observation.visual,
+        visible_text_blocks: ["Final Review", "Review Status: Ready for final review", "Submit Final Application"]
+      },
+      accessibility: { controls: [{ role: "button", name: "Submit Final Application", enabled: true }] }
+    };
+    const result = resolveTarget({
+      id: "extract_review_status",
+      description: "Review Status text on Final Review screen",
+      fingerprint: {},
+      confidence: { minimum: 0.85, signals: ["visible_text_match", "unique_match"] }
+    }, finalReview);
+    expect(result).toEqual({ status: "resolved", locator: "text=Review Status: Ready for final review", score: 0.74 });
   });
 
   it("uses the description to disambiguate broad semantic containment", () => {
