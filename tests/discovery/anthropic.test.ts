@@ -39,6 +39,36 @@ describe("AnthropicClient", () => {
     expect(body.messages[0].content[0]).toMatchObject({ type: "text" });
   });
 
+  it("includes the full decision contract because Anthropic has no response schema field", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      content: [{ type: "text", text: JSON.stringify({ decision: "finish", reason_summary: "Done", outputs: {} }) }]
+    })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new AnthropicClient({ apiKey: "key", model: "claude-sonnet-5" });
+    await client.decide({ goal: "g", observation, params: {}, recentActions: [] });
+
+    const firstCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(firstCall[1].body as string);
+    const text = body.messages[0].content[0].text as string;
+    expect(text).toContain("\"decision\":\"act\"");
+    expect(text).toContain("\"intent\":\"open_member_search\"");
+    expect(text).toContain("\"target\":{\"description\":\"Member Search link\"");
+    expect(text).toContain("\"decision\":\"finish\"");
+    expect(text).toContain("\"decision\":\"escalate\"");
+  });
+
+  it("explains schema validation errors with raw Claude JSON keys", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      content: [{ type: "text", text: JSON.stringify({ decision: "act", reason_summary: "Click", action: { type: "click", target: { semantic: { role: "link", name: "Member Search" } } } }) }]
+    })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new AnthropicClient({ apiKey: "key", model: "claude-sonnet-5" });
+    await expect(client.decide({ goal: "g", observation, params: {}, recentActions: [] }))
+      .rejects.toThrow(/Claude returned invalid decision JSON.*intent.*description/s);
+  });
+
   it("attaches screenshot bytes as Claude image input when enabled", async () => {
     const dir = join(tmpdir(), "anthropic-screenshot-test");
     await mkdir(dir, { recursive: true });
