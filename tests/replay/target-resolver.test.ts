@@ -45,4 +45,18 @@ describe("target resolver", () => {
     }, form);
     expect(result).toEqual({ status: "resolved", locator: "role=combobox[name*=\"Vehicle Type\"]", score: 0.9 });
   });
+
+  it("resolves a unique accessible control mentioned in the target description", () => {
+    const dashboard = {
+      ...observation,
+      accessibility: { controls: [{ role: "link", name: "Member Search", enabled: true }] }
+    };
+    const result = resolveTarget({
+      id: "member_search",
+      description: "Member Search navigation link",
+      fingerprint: {},
+      confidence: { minimum: 0.85, signals: ["description_control_name_match", "unique_match"] }
+    }, dashboard);
+    expect(result).toEqual({ status: "resolved", locator: "role=link[name=\"Member Search\"]", score: 0.8 });
+  });
 });

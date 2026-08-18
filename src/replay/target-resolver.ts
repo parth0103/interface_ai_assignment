@@ -17,11 +17,15 @@ export type TargetResolution =
   | { status: "ambiguous"; code: "ambiguous_target"; message: string }
   | { status: "not_found"; code: "target_not_found"; message: string };
 
+function locatorForRoleName(role: string, name: string): string {
+  return `role=${role}[name="${name}"]`;
+}
+
 export function resolveTarget(target: Target, observation: Observation): TargetResolution {
   const semantic = target.fingerprint.semantic;
   if (semantic?.role && semantic.name) {
     const matches = observation.accessibility.controls.filter((control) => control.role === semantic.role && control.name === semantic.name);
-    if (matches.length === 1) return { status: "resolved", locator: `role=${semantic.role}[name="${semantic.name}"]`, score: 1 };
+    if (matches.length === 1) return { status: "resolved", locator: locatorForRoleName(semantic.role, semantic.name), score: 1 };
     if (matches.length > 1) return { status: "ambiguous", code: "ambiguous_target", message: `Multiple controls matched ${target.description}` };
   }
   if (semantic?.role && semantic.name_contains) {
@@ -35,5 +39,16 @@ export function resolveTarget(target: Target, observation: Observation): TargetR
   }
   const hint = target.fingerprint.adapter_hints?.["browser.playwright"]?.locator;
   if (hint) return { status: "resolved", locator: hint, score: 0.85 };
+  const normalizedDescription = target.description.toLowerCase();
+  const descriptionMatches = observation.accessibility.controls.filter((control) =>
+    control.enabled && control.name && normalizedDescription.includes(control.name.toLowerCase())
+  );
+  if (descriptionMatches.length === 1) {
+    const match = descriptionMatches[0];
+    return { status: "resolved", locator: locatorForRoleName(match.role, match.name), score: 0.8 };
+  }
+  if (descriptionMatches.length > 1) {
+    return { status: "ambiguous", code: "ambiguous_target", message: `Multiple controls matched ${target.description}` };
+  }
   return { status: "not_found", code: "target_not_found", message: `No target matched ${target.description}` };
 }
