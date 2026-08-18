@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0",
+  "capability": {
+    "id": "prepare_auto_loan_offer_review",
+    "name": "Prepare Auto Loan Offer Review",
+    "status": "draft",
+    "risk_level": "moderate"
+  },
+  "surface": {
+    "kind": "browser",
+    "app_family": "loan_servicing_portal",
+    "supported_adapters": ["browser.playwright"]
+  },
+  "contract": {
+    "inputs": {
+      "member_id": { "type": "string", "required": true },
+      "offer_type": { "type": "string", "required": true },
+      "vehicle_type": { "type": "string", "required": true }
+    },
+    "outputs": {
+      "review_status": { "type": "string", "sensitivity": "low" }
+    }
+  },
+  "safety": { "policy_profile": "demo" },
+  "phases": [
+    { "id": "find_member", "description": "Find and open the member profile." }
+  ],
+  "steps": [
+    {
+      "id": "open_member_search",
+      "phase": "find_member",
+      "intent": "open_member_search",
+      "risk": "safe",
+      "action": {
+        "type": "click",
+        "target": {
+          "id": "member_search_link",
+          "description": "Member Search link",
+          "fingerprint": {
+            "semantic": { "role": "link", "name": "Member Search" },
+            "visual": { "anchor_text": "Member Search" }
+          },
+          "confidence": { "minimum": 0.85, "signals": ["role_name_match", "unique_match"] }
+        }
+      },
+      "checkpoint": { "type": "text_visible", "value": "Member Search" }
+    }
+  ],
+  "known_outcomes": [
+    {
+      "code": "no_auto_loan_offer",
+      "status": "business_outcome",
+      "detect": { "type": "text_visible", "value": "No active pre-approved auto loan offers" },
+      "message": "Member has no active pre-approved auto loan offer."
+    }
+  ],
+  "handoff": { "mode": "same_session_cli" },
+  "compatibility": {
+    "app_family": "loan_servicing_portal",
+    "base_variant": "default",
+    "tested_variants": ["default"],
+    "required_features": ["member_search"]
+  },
+  "variant_overlays": {},
+  "evidence": {}
+}

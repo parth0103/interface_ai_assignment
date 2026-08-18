@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "capability": {
+    "id": "prepare_auto_loan_offer_review",
+    "name": "Prepare Auto Loan Offer Review",
+    "status": "draft",
+    "risk_level": "moderate"
+  },
+  "surface": {
+    "kind": "browser",
+    "app_family": "loan_servicing_portal",
+    "supported_adapters": ["browser.playwright"]
+  },
+  "contract": {
+    "inputs": {
+      "member_id": { "type": "string", "required": true },
+      "offer_type": { "type": "string", "required": true },
+      "vehicle_type": { "type": "string", "required": true }
+    },
+    "outputs": {}
+  },
+  "safety": { "policy_profile": "demo" },
+  "phases": [
+    { "id": "blocked_policy_test", "description": "Prove blocked final submission is stopped before clicking." }
+  ],
+  "steps": [
+    {
+      "id": "submit_final_application",
+      "phase": "blocked_policy_test",
+      "intent": "submit_final_application",
+      "risk": "blocked",
+      "action": {
+        "type": "click",
+        "target": {
+          "id": "submit_final_application_button",
+          "description": "Submit Final Application button",
+          "fingerprint": {
+            "semantic": { "role": "button", "name": "Submit Final Application" },
+            "visual": { "anchor_text": "Submit Final Application" }
+          },
+          "confidence": { "minimum": 0.85, "signals": ["role_name_match", "unique_match"] }
+        }
+      }
+    }
+  ],
+  "known_outcomes": [],
+  "handoff": {},
+  "compatibility": {
+    "app_family": "loan_servicing_portal",
+    "base_variant": "default",
+    "tested_variants": ["default"],
+    "required_features": ["auto_loan_offer_review"]
+  },
+  "variant_overlays": {},
+  "evidence": {}
+}
