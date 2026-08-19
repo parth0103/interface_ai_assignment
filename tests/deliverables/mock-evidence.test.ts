@@ -12,7 +12,7 @@ describe("generateMockEvidence", () => {
     try {
       await generateMockEvidence(dir);
 
-      expect(await validateEvidence(dir)).toEqual([]);
+      expect(await validateEvidence(dir, { requireRealDiscovery: false })).toEqual([]);
 
       const blocked = JSON.parse(
         await readFile(join(dir, "replay-14-blocked-policy", "replay", "result.json"), "utf8")

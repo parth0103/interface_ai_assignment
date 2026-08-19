@@ -2,7 +2,7 @@
   "status": "needs_human",
   "capability_id": "prepare_auto_loan_offer_review",
   "run_id": "replay",
-  "step_id": "open_member",
+  "step_id": "open_member_profile",
   "code": "ambiguous_target",
   "message": "Multiple controls matched Open Member button for member {{member_id}}",
   "evidence": {

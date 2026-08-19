@@ -66,11 +66,11 @@
         "type": "click",
         "target": {
           "id": "open_member_search",
-          "description": "Member Search link in navigation",
+          "description": "Search for a Member link",
           "fingerprint": {
             "semantic": {
               "role": "link",
-              "name": "Member Search"
+              "name": "Search for a Member"
             }
           },
           "confidence": {
@@ -98,7 +98,7 @@
         "value": "{{member_id}}",
         "target": {
           "id": "type_member_id",
-          "description": "Member ID field",
+          "description": "Member ID input field",
           "fingerprint": {
             "semantic": {
               "role": "textbox",
@@ -152,14 +152,14 @@
       }
     },
     {
-      "id": "open_member",
+      "id": "open_member_profile",
       "phase": "find_member",
-      "intent": "open_member",
+      "intent": "open_member_profile",
       "risk": "safe",
       "action": {
         "type": "click",
         "target": {
-          "id": "open_member",
+          "id": "open_member_profile",
           "description": "Open Member button for member {{member_id}}",
           "fingerprint": {
             "semantic": {
@@ -231,12 +231,8 @@
               "role": "link",
               "name": "Open Offer"
             },
-            "visual": {
-              "text": "Open Offer"
-            },
             "structure": {
-              "row": "Pre-approved Auto Loan",
-              "column": "Action"
+              "row": "Pre-approved Auto Loan"
             }
           },
           "confidence": {

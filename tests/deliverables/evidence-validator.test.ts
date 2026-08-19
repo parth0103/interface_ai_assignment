@@ -14,7 +14,10 @@ const replayStatuses = {
 async function writeCompleteEvidence(root: string): Promise<void> {
   await mkdir(join(root, "discovery-claude-real-8", "discovery"), { recursive: true });
   await writeFile(join(root, "discovery-claude-real-8", "artifact.v1.json"), "{}\n");
-  await writeFile(join(root, "discovery-claude-real-8", "discovery", "run-log.jsonl"), "{}\n");
+  await writeFile(
+    join(root, "discovery-claude-real-8", "discovery", "run-log.jsonl"),
+    `${JSON.stringify({ event: "discovery_started", provider: "anthropic", model: "claude-sonnet-5", screenshot_context: true })}\n${JSON.stringify({ event: "llm_decision", provider: "anthropic", model: "claude-sonnet-5", decision: "act" })}\n`
+  );
 
   for (const [subdir, status] of Object.entries(replayStatuses)) {
     await mkdir(join(root, subdir, "replay"), { recursive: true });
@@ -58,6 +61,24 @@ describe("validateEvidence", () => {
 
       expect(await validateEvidence(dir)).toContain(
         "replay-14-blocked-policy/replay/result.json status success, expected blocked"
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports stale discovery logs that do not prove the final Claude run", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "evidence-validator-"));
+
+    try {
+      await writeCompleteEvidence(dir);
+      await writeFile(
+        join(dir, "discovery-claude-real-8", "discovery", "run-log.jsonl"),
+        `${JSON.stringify({ event: "llm_decision", actor: "gemini", provider: "gemini", model: "gemini-2.5-flash", decision: "act" })}\n`
+      );
+
+      expect(await validateEvidence(dir)).toContain(
+        "discovery-claude-real-8/discovery/run-log.jsonl missing anthropic discovery_started metadata"
       );
     } finally {
       await rm(dir, { recursive: true, force: true });

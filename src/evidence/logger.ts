@@ -7,7 +7,7 @@ type EvidenceEvent = {
   phase?: string;
   step_id?: string;
   event: string;
-  actor: "gemini" | "replay" | "human" | "system";
+  actor: "llm" | "replay" | "human" | "system";
   intent?: string;
   action_type?: string;
   target_id?: string;
@@ -24,6 +24,35 @@ export type EvidenceLogger = {
   path(name: string): string;
 };
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildReplacements(params?: Record<string, unknown>): Array<{ raw: string; redacted: string }> {
+  if (!params) return [];
+  const redactedParams = redactParams(params);
+  return Object.entries(params)
+    .filter(([, value]) => typeof value === "string" && value.length > 0)
+    .map(([key, value]) => ({ raw: value as string, redacted: String(redactedParams[key]) }))
+    .filter(({ raw, redacted }) => raw !== redacted);
+}
+
+function redactEventValue(value: unknown, replacements: Array<{ raw: string; redacted: string }>): unknown {
+  if (typeof value === "string") {
+    return replacements.reduce(
+      (current, replacement) => current.replace(new RegExp(escapeRegex(replacement.raw), "g"), replacement.redacted),
+      value
+    );
+  }
+  if (Array.isArray(value)) return value.map((item) => redactEventValue(item, replacements));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nested]) => [key, redactEventValue(nested, replacements)])
+    );
+  }
+  return value;
+}
+
 export async function createEvidenceLogger(rootDir: string, runId: string): Promise<EvidenceLogger> {
   const runDir = join(rootDir, runId);
   await mkdir(runDir, { recursive: true });
@@ -34,7 +63,12 @@ export async function createEvidenceLogger(rootDir: string, runId: string): Prom
       return join(runDir, name);
     },
     async event(event) {
-      const safe = { ...event, params: event.params ? redactParams(event.params) : undefined, ts: new Date().toISOString() };
+      const replacements = buildReplacements(event.params);
+      const safe = {
+        ...redactEventValue(event, replacements) as EvidenceEvent,
+        params: event.params ? redactParams(event.params) : undefined,
+        ts: new Date().toISOString()
+      };
       await appendFile(logPath, `${JSON.stringify(safe)}\n`);
     },
     async result(result) {

@@ -82,6 +82,16 @@ function missingOutputExtractions(capability: CapabilityDefinition, steps: Recor
 
 export async function runDiscovery(options: DiscoveryOptions): Promise<DiscoveryResult> {
   const logger = await createEvidenceLogger(options.evidenceRoot, options.runId);
+  await logger.event({
+    event: "discovery_started",
+    actor: "llm",
+    provider: options.llm.metadata.provider,
+    model: options.llm.metadata.model,
+    screenshot_context: options.llm.metadata.sendsScreenshots,
+    target: options.target,
+    status: "ok",
+    params: options.params
+  });
   await options.surface.open(options.target);
   const recentActions: string[] = [];
   const recordedSteps: RecordedDiscoveryStep[] = [];
@@ -97,10 +107,18 @@ export async function runDiscovery(options: DiscoveryOptions): Promise<Discovery
     });
     await logger.event({
       event: "llm_decision",
-      actor: "gemini",
+      actor: "llm",
+      provider: options.llm.metadata.provider,
+      model: options.llm.metadata.model,
+      screenshot_context: options.llm.metadata.sendsScreenshots && observation.visual.send_to_llm,
       status: "ok",
       step_id: `discovery_${stepIndex}`,
+      decision: decision.decision,
       reason_summary: decision.reason_summary,
+      action_type: decision.decision === "act" ? decision.action.type : undefined,
+      intent: decision.decision === "act" ? decision.action.intent : undefined,
+      target_description: decision.decision === "act" ? decision.action.target?.description : undefined,
+      observation_screenshot: observation.visual.screenshot_path,
       params: options.params
     });
 

@@ -19,6 +19,8 @@ describe("evidence logger", () => {
         target_id: "member_id_field",
         risk: "safe",
         status: "ok",
+        reason_summary: "Search for member 24816 using token secret",
+        target_description: "Member row for 24816",
         params: { member_id: "24816", token: "secret" }
       });
       await logger.result({ status: "success", capability_id: "cap", run_id: "run_001", message: "ok", evidence: {} });

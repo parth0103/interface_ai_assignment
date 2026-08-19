@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -104,6 +104,55 @@ describe("runDiscovery", () => {
       expect(surface.actions).toHaveLength(3);
       expect(surface.actions[1]).toMatchObject({ type: "type", value: "24816" });
       expect(result.artifact.steps.find((step) => step.id === "extract_review_status")?.phase).toBe("extract_outputs");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("logs sanitized LLM decision metadata without raw model reasoning", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "discovery-"));
+    try {
+      const surface = new FakeSurface();
+      const result = await runDiscovery({
+        goal: "Find member 24816",
+        target: "http://localhost:3000",
+        params: { member_id: "24816", token: "secret" },
+        capability: noOutputCapability,
+        llm: new MockLLMClient([
+          { decision: "act", reason_summary: "Open search", action: { type: "click", intent: "open_member_search", target: { description: "Member Search link", semantic: { role: "link", name: "Member Search" } } } },
+          { decision: "finish", reason_summary: "Done", outputs: {} }
+        ]),
+        surface,
+        policy: createDefaultSafetyPolicy("demo"),
+        evidenceRoot: dir,
+        runId: "run_discovery",
+        maxSteps: 5
+      });
+
+      expect(result.status).toBe("success");
+      const logLines = (await readFile(join(dir, "run_discovery", "run-log.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+      expect(logLines[0]).toMatchObject({
+        event: "discovery_started",
+        actor: "llm",
+        provider: "mock",
+        model: "scripted-mock",
+        screenshot_context: false,
+        target: "http://localhost:3000"
+      });
+      expect(logLines[1]).toMatchObject({
+        event: "llm_decision",
+        actor: "llm",
+        provider: "mock",
+        model: "scripted-mock",
+        decision: "act",
+        action_type: "click",
+        intent: "open_member_search",
+        target_description: "Member Search link",
+        observation_screenshot: "shot.png",
+        status: "ok"
+      });
+      expect(JSON.stringify(logLines)).not.toContain("secret");
+      expect(JSON.stringify(logLines)).not.toContain("24816");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

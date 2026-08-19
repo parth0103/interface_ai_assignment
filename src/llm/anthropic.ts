@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { geminiAgentDecisionResponseSchema, parseAgentDecision } from "./action-schema.js";
 import { buildDiscoveryPrompt } from "./prompt.js";
-import type { LLMClient } from "./types.js";
+import type { LLMClient, LLMMetadata } from "./types.js";
 
 type AnthropicContentBlock =
   | { type: "text"; text: string }
@@ -72,7 +72,15 @@ function parseClaudeDecision(text: string) {
 }
 
 export class AnthropicClient implements LLMClient {
-  constructor(private readonly config: { apiKey: string; model: string; sendScreenshots?: boolean; maxTokens?: number }) {}
+  readonly metadata: LLMMetadata;
+
+  constructor(private readonly config: { apiKey: string; model: string; sendScreenshots?: boolean; maxTokens?: number }) {
+    this.metadata = {
+      provider: "anthropic",
+      model: config.model,
+      sendsScreenshots: config.sendScreenshots === true
+    };
+  }
 
   async decide(input: Parameters<LLMClient["decide"]>[0]): ReturnType<LLMClient["decide"]> {
     const prompt = buildAnthropicPrompt(input);

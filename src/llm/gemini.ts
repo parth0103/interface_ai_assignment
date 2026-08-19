@@ -1,12 +1,20 @@
 import { readFile } from "node:fs/promises";
 import { geminiAgentDecisionResponseSchema, parseAgentDecision } from "./action-schema.js";
 import { buildDiscoveryPrompt } from "./prompt.js";
-import type { LLMClient } from "./types.js";
+import type { LLMClient, LLMMetadata } from "./types.js";
 
 type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } };
 
 export class GeminiClient implements LLMClient {
-  constructor(private readonly config: { apiKey: string; model: string; sendScreenshots?: boolean }) {}
+  readonly metadata: LLMMetadata;
+
+  constructor(private readonly config: { apiKey: string; model: string; sendScreenshots?: boolean }) {
+    this.metadata = {
+      provider: "gemini",
+      model: config.model,
+      sendsScreenshots: config.sendScreenshots === true
+    };
+  }
 
   async decide(input: Parameters<LLMClient["decide"]>[0]): ReturnType<LLMClient["decide"]> {
     const prompt = buildDiscoveryPrompt(input);

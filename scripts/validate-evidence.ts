@@ -21,6 +21,10 @@ const expectedReplayStatuses = {
   "replay-14-blocked-policy/replay/result.json": "blocked"
 } as const;
 
+type EvidenceValidationOptions = {
+  requireRealDiscovery?: boolean;
+};
+
 async function exists(path: string): Promise<boolean> {
   try {
     await access(path);
@@ -34,8 +38,18 @@ async function readJson(path: string): Promise<unknown> {
   return JSON.parse(await readFile(path, "utf8"));
 }
 
-export async function validateEvidence(root = "evidence"): Promise<string[]> {
+async function readJsonl(path: string): Promise<unknown[]> {
+  const text = await readFile(path, "utf8");
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
+export async function validateEvidence(root = "evidence", options: EvidenceValidationOptions = {}): Promise<string[]> {
   const failures: string[] = [];
+  const requireRealDiscovery = options.requireRealDiscovery ?? true;
 
   for (const file of requiredFiles) {
     if (!(await exists(join(root, file)))) failures.push(`missing ${file}`);
@@ -55,7 +69,42 @@ export async function validateEvidence(root = "evidence"): Promise<string[]> {
     }
   }
 
+  if (requireRealDiscovery) {
+    const discoveryLog = "discovery-claude-real-8/discovery/run-log.jsonl";
+    const path = join(root, discoveryLog);
+    if (await exists(path)) {
+      try {
+        const events = await readJsonl(path);
+        const started = events.find((event) => eventMatches(event, {
+          event: "discovery_started",
+          provider: "anthropic",
+          model: "claude-sonnet-5"
+        }));
+        if (!started) failures.push(`${discoveryLog} missing anthropic discovery_started metadata`);
+
+        const decision = events.find((event) => eventMatches(event, {
+          event: "llm_decision",
+          provider: "anthropic",
+          model: "claude-sonnet-5"
+        }) && hasStringField(event, "decision"));
+        if (!decision) failures.push(`${discoveryLog} missing anthropic llm_decision metadata`);
+      } catch (error) {
+        failures.push(`${discoveryLog} is not valid JSONL: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+
   return failures;
+}
+
+function eventMatches(value: unknown, expected: Record<string, string>): boolean {
+  if (!value || typeof value !== "object") return false;
+  return Object.entries(expected).every(([key, expectedValue]) => (value as Record<string, unknown>)[key] === expectedValue);
+}
+
+function hasStringField(value: unknown, key: string): boolean {
+  if (!value || typeof value !== "object") return false;
+  return typeof (value as Record<string, unknown>)[key] === "string";
 }
 
 function readResultStatus(value: unknown): string | undefined {

@@ -1,9 +1,17 @@
-import type { AgentDecision, LLMClient } from "./types.js";
+import type { AgentDecision, LLMClient, LLMMetadata } from "./types.js";
 
 export class MockLLMClient implements LLMClient {
   private index = 0;
+  readonly metadata: LLMMetadata;
 
-  constructor(private readonly decisions: AgentDecision[]) {}
+  constructor(private readonly decisions: AgentDecision[], metadata: Partial<LLMMetadata> = {}) {
+    this.metadata = {
+      provider: "mock",
+      model: "scripted-mock",
+      sendsScreenshots: false,
+      ...metadata
+    };
+  }
 
   async decide(_input: Parameters<LLMClient["decide"]>[0]): Promise<AgentDecision> {
     const decision = this.decisions[this.index];

@@ -1,5 +1,11 @@
 import type { Observation } from "../surface/types.js";
 
+export type LLMMetadata = {
+  provider: "mock" | "gemini" | "anthropic";
+  model: string;
+  sendsScreenshots: boolean;
+};
+
 export type ProposedAction = {
   type: "click" | "type" | "select" | "extract" | "assert" | "wait";
   intent: string;
@@ -19,6 +25,7 @@ export type AgentDecision =
   | { decision: "escalate"; reason_summary: string; code: string; message: string };
 
 export type LLMClient = {
+  readonly metadata: LLMMetadata;
   decide(input: {
     goal: string;
     observation: Observation;
