@@ -14,10 +14,13 @@ Replay must not call Gemini or any LLM provider.
 Replay must check safety before every action.
 Replay statuses are exactly `success`, `business_outcome`, `needs_human`, `failure`, and `blocked`.
 Interactive handoff must pause the same live session, transfer control to a human, record the human action, and resume before returning `success`.
+After handoff, replay must verify an explicit resume checkpoint on the same live session before continuing.
 Outcome detection is driven by explicit artifact rules; regex is allowed only as an explicit detector type, not a broad fallback.
 Primary target strategy is semantic/visual/structural fingerprints with Playwright hints as fallback.
 Raw coordinates are not the primary replay strategy.
 Artifacts store output definitions and step metadata, not raw borrower PII.
+Replay must accumulate `extract` action results into the final `outputs` object and validate that declared outputs are present before returning `success`.
+Replay must verify every step checkpoint after the action that owns it; checkpoint failure returns `failure`, not `success`.
 Logs redact run params such as `member_id` to `****16`.
 Browser observations set `visual.send_to_llm` from `SEND_SCREENSHOTS_TO_LLM`; image bytes are attached only by the LLM client when that flag is true.
 Blocked loan intents stop before clicking.
@@ -302,13 +305,18 @@ import { z } from "zod";
 
 export const runStatusSchema = z.enum(["success", "business_outcome", "needs_human", "failure", "blocked"]);
 export const riskSchema = z.enum(["safe", "approval_required", "blocked"]);
-export const actionTypeSchema = z.enum(["navigate", "click", "type", "select", "extract", "assert", "wait", "finish", "escalate"]);
+export const actionTypeSchema = z.enum(["navigate", "click", "type", "select", "extract", "assert", "wait"]);
 
 export const targetFingerprintSchema = z.object({
   semantic: z.record(z.unknown()).optional(),
   visual: z.record(z.unknown()).optional(),
   structure: z.record(z.unknown()).optional(),
   adapter_hints: z.record(z.record(z.unknown())).optional()
+});
+
+export const checkpointSchema = z.object({
+  type: z.enum(["text_visible", "text_absent", "url_contains"]),
+  value: z.unknown()
 });
 
 export const artifactStepSchema = z.object({
@@ -330,10 +338,7 @@ export const artifactStepSchema = z.object({
     value: z.unknown().optional(),
     output_key: z.string().optional()
   }),
-  checkpoint: z.object({
-    type: z.string(),
-    value: z.unknown()
-  }).optional(),
+  checkpoint: checkpointSchema.optional(),
   recovery: z.array(z.record(z.unknown())).optional()
 });
 
@@ -363,7 +368,10 @@ export const capabilityArtifactSchema = z.object({
     detect: z.record(z.unknown()),
     message: z.string().optional()
   })),
-  handoff: z.record(z.unknown()),
+  handoff: z.object({
+    mode: z.string().optional(),
+    resume_checkpoint: checkpointSchema.optional()
+  }),
   compatibility: z.object({
     app_family: z.string(),
     base_variant: z.string(),
@@ -517,7 +525,7 @@ export type SafetyDecision =
   | { decision: "needs_human"; code: string; message: string }
   | { decision: "blocked"; code: string; message: string };
 
-const allowedActions = new Set(["navigate", "click", "type", "select", "extract", "assert", "wait", "finish", "escalate"]);
+const allowedActions = new Set(["navigate", "click", "type", "select", "extract", "assert", "wait"]);
 const blockedIntents = new Set([
   "submit_final_application",
   "approve_loan",
@@ -761,6 +769,7 @@ describe("BrowserSurfaceAdapter", () => {
     expect(observation.state.title).toContain("Loan Servicing Portal");
     expect(observation.visual.visible_text_blocks.join(" ")).toContain("Member Search");
     expect(observation.accessibility.controls.some((control) => control.name === "Member Search")).toBe(true);
+    expect(observation.accessibility.controls).toContainEqual(expect.objectContaining({ role: "link", name: "Member Search" }));
     expect(observation.visual.screenshot_path).toContain("evidence/test-browser-surface");
   });
 });
@@ -846,7 +855,17 @@ export class BrowserSurfaceAdapter implements SurfaceAdapter {
     const controls = await this.page.locator("a,button,input,select,[role='tab']").evaluateAll((elements) =>
       elements.map((element) => {
         const input = element as HTMLInputElement;
-        const role = element.getAttribute("role") || element.tagName.toLowerCase();
+        const tag = element.tagName.toLowerCase();
+        const inputType = (input.getAttribute("type") || "text").toLowerCase();
+        const nativeRole =
+          tag === "a" ? "link" :
+          tag === "select" ? "combobox" :
+          tag === "input" && ["button", "submit", "reset"].includes(inputType) ? "button" :
+          tag === "input" && inputType === "checkbox" ? "checkbox" :
+          tag === "input" && inputType === "radio" ? "radio" :
+          tag === "input" ? "textbox" :
+          tag;
+        const role = element.getAttribute("role") || nativeRole;
         const name = element.getAttribute("aria-label") || input.labels?.[0]?.textContent?.trim() || element.textContent?.trim() || input.name || input.value || "";
         return { role, name, enabled: !(input.disabled ?? false) };
       }).filter((control) => control.name)
@@ -1187,7 +1206,15 @@ import type { ActionResult, EvidenceRef, Observation, ObservationContext, Resolv
 
 class FakeSurface implements SurfaceAdapter {
   async open(): Promise<void> {}
-  async observe(_context: ObservationContext): Promise<Observation> { throw new Error("not used"); }
+  async observe(_context: ObservationContext): Promise<Observation> {
+    return {
+      state: { surface_kind: "browser", url: "http://localhost:3000/member/123", title: "Member Profile", recent_actions: [] },
+      visual: { screenshot_path: "after.png", send_to_llm: false, viewport: { width: 1, height: 1 }, visible_text_blocks: ["Member Profile", "Auto Loan Offers"] },
+      accessibility: { controls: [] },
+      structure: { tables: [], forms: [], regions: [{ name: "body", text: "Member Profile Auto Loan Offers" }] },
+      policy: {}
+    };
+  }
   async act(_action: ResolvedAction): Promise<ActionResult> { return { ok: true }; }
   async captureEvidence(label: string): Promise<EvidenceRef> { return { path: `${label}.png`, kind: "screenshot" }; }
 }
@@ -1211,7 +1238,8 @@ describe("handoff manager", () => {
         before_screenshot: "before.png",
         after_screenshot: "after.png",
         human_summary: "Operator selected the Avery Patel row with DOB ending 1991.",
-        resume_checkpoint: "member_profile_visible"
+        resume_checkpoint: { type: "text_visible", value: "Member Profile" },
+        resume_verified: true
       });
       expect(JSON.parse(await readFile(interventionPath, "utf8")).controller).toBe("human");
       expect(await readFile(join(dir, "human-resume.json"), "utf8")).toContain("DOB ending 1991");
@@ -1230,10 +1258,12 @@ describe("handoff manager", () => {
         step_id: "select_member_result",
         message: "Multiple member records matched.",
         surface: new FakeSurface(),
-        resume_checkpoint: "member_profile_visible",
+        resume_checkpoint: { type: "text_visible", value: "Member Profile" },
         waitForResume: async () => "Operator selected the Avery Patel row."
       });
-      expect(await readFile(join(dir, "human-resume.json"), "utf8")).toContain("Avery Patel");
+      const resume = JSON.parse(await readFile(join(dir, "human-resume.json"), "utf8"));
+      expect(resume.human_summary).toContain("Avery Patel");
+      expect(resume.resume_verified).toBe(true);
       expect(JSON.parse(await readFile(join(dir, "control-lease.json"), "utf8")).controller).toBe("automation");
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -1261,7 +1291,18 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import type { SurfaceAdapter } from "../surface/types.js";
+import type { Observation, SurfaceAdapter } from "../surface/types.js";
+
+type Checkpoint = { type: string; value: unknown };
+
+function checkpointMatches(checkpoint: Checkpoint, observation: Observation): boolean {
+  if (checkpoint.type === "text_visible") {
+    const expected = String(checkpoint.value);
+    return observation.visual.visible_text_blocks.some((block) => block.includes(expected));
+  }
+  if (checkpoint.type === "url_contains") return observation.state.url.includes(String(checkpoint.value));
+  return false;
+}
 
 export async function createIntervention(input: {
   dir: string;
@@ -1285,7 +1326,8 @@ export async function recordHumanResume(input: {
   before_screenshot: string;
   after_screenshot: string;
   human_summary: string;
-  resume_checkpoint: string;
+  resume_checkpoint: Checkpoint;
+  resume_verified: boolean;
 }): Promise<string> {
   const path = join(input.dir, "human-resume.json");
   await writeFile(path, `${JSON.stringify(input, null, 2)}\n`);
@@ -1310,9 +1352,9 @@ export async function performInteractiveHandoff(input: {
   step_id: string;
   message: string;
   surface: SurfaceAdapter;
-  resume_checkpoint: string;
+  resume_checkpoint: Checkpoint;
   waitForResume?: () => Promise<string>;
-}): Promise<{ before_screenshot: string; after_screenshot: string; human_summary: string }> {
+}): Promise<{ before_screenshot: string; after_screenshot: string; human_summary: string; resume_verified: boolean }> {
   const before = await input.surface.captureEvidence("handoff-before");
   await createIntervention({
     dir: input.dir,
@@ -1324,6 +1366,8 @@ export async function performInteractiveHandoff(input: {
   });
   const human_summary = input.waitForResume ? await input.waitForResume() : await promptForResume();
   const after = await input.surface.captureEvidence("handoff-after");
+  const resumeObservation = await input.surface.observe({ recent_actions: [`handoff:${input.step_id}`] });
+  const resume_verified = checkpointMatches(input.resume_checkpoint, resumeObservation);
   await recordHumanResume({
     dir: input.dir,
     intervention_id: input.intervention_id,
@@ -1331,9 +1375,10 @@ export async function performInteractiveHandoff(input: {
     before_screenshot: before.path,
     after_screenshot: after.path,
     human_summary,
-    resume_checkpoint: input.resume_checkpoint
+    resume_checkpoint: input.resume_checkpoint,
+    resume_verified
   });
-  return { before_screenshot: before.path, after_screenshot: after.path, human_summary };
+  return { before_screenshot: before.path, after_screenshot: after.path, human_summary, resume_verified };
 }
 ```
 
@@ -1478,7 +1523,7 @@ describe("runReplay", () => {
           known_outcomes: [
             { code: "ambiguous_member_match", status: "needs_human", detect: { type: "text_visible", value: "Multiple member records matched" }, message: "Multiple member records matched." }
           ],
-          handoff: { mode: "same_session_cli", resume_checkpoint: "member_profile_visible" },
+          handoff: { mode: "same_session_cli", resume_checkpoint: { type: "text_visible", value: "Dashboard" } },
           compatibility: { app_family: "loan_servicing_portal", base_variant: "default", tested_variants: ["default"], required_features: [] },
           variant_overlays: {},
           evidence: {}
@@ -1495,6 +1540,86 @@ describe("runReplay", () => {
       expect(result.status).toBe("success");
       expect(surface.actions).toHaveLength(0);
       expect(await readFile(join(dir, "handoff-open_member_search", "human-resume.json"), "utf8")).toContain("correct member row");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns extracted outputs declared by the capability contract", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "replay-"));
+    try {
+      const surface = new FakeSurface([observation("Ready for final review"), observation("Ready for final review")]);
+      const result = await runReplay({
+        artifact: {
+          schema_version: "1.0",
+          capability: { id: "prepare_auto_loan_offer_review", name: "Prepare", status: "draft", risk_level: "moderate" },
+          surface: { kind: "browser", app_family: "loan_servicing_portal", supported_adapters: ["browser.playwright"] },
+          contract: { inputs: {}, outputs: { review_status: { type: "string", sensitivity: "low" } } },
+          safety: {},
+          phases: [{ id: "review", description: "Review" }],
+          steps: [{
+            id: "extract_review_status",
+            phase: "review",
+            intent: "extract_review_status",
+            risk: "safe",
+            action: { type: "extract", output_key: "review_status", target: { id: "status", description: "Review status", fingerprint: { semantic: { role: "link", name: "Member Search" } }, confidence: { minimum: 0.85, signals: [] } } },
+            checkpoint: { type: "text_visible", value: "Ready for final review" }
+          }],
+          known_outcomes: [],
+          handoff: {},
+          compatibility: { app_family: "loan_servicing_portal", base_variant: "default", tested_variants: ["default"], required_features: [] },
+          variant_overlays: {},
+          evidence: {}
+        },
+        params: {},
+        surface,
+        policy: createDefaultSafetyPolicy("demo"),
+        evidenceRoot: dir,
+        runId: "run_extract",
+        allowDraft: true
+      });
+      expect(result.status).toBe("success");
+      expect(result.outputs).toEqual({ review_status: "ready_for_final_review" });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails when a step checkpoint is not observed after the action", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "replay-"));
+    try {
+      const surface = new FakeSurface([observation("Dashboard Member Search"), observation("Still loading")]);
+      const result = await runReplay({
+        artifact: {
+          schema_version: "1.0",
+          capability: { id: "prepare_auto_loan_offer_review", name: "Prepare", status: "draft", risk_level: "moderate" },
+          surface: { kind: "browser", app_family: "loan_servicing_portal", supported_adapters: ["browser.playwright"] },
+          contract: { inputs: {}, outputs: {} },
+          safety: {},
+          phases: [{ id: "find_member", description: "Find member" }],
+          steps: [{
+            id: "open_member_search",
+            phase: "find_member",
+            intent: "open_member_search",
+            risk: "safe",
+            action: { type: "click", target: { id: "member_search", description: "Member Search link", fingerprint: { semantic: { role: "link", name: "Member Search" } }, confidence: { minimum: 0.85, signals: [] } } },
+            checkpoint: { type: "text_visible", value: "Member Search Results" }
+          }],
+          known_outcomes: [],
+          handoff: {},
+          compatibility: { app_family: "loan_servicing_portal", base_variant: "default", tested_variants: ["default"], required_features: [] },
+          variant_overlays: {},
+          evidence: {}
+        },
+        params: {},
+        surface,
+        policy: createDefaultSafetyPolicy("demo"),
+        evidenceRoot: dir,
+        runId: "run_checkpoint_failure",
+        allowDraft: true
+      });
+      expect(result.status).toBe("failure");
+      expect(result.code).toBe("checkpoint_not_met");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -1525,7 +1650,7 @@ import { performInteractiveHandoff } from "../handoff/manager.js";
 import type { RunResult } from "../shared/result.js";
 import { substituteParams } from "../shared/params.js";
 import type { SafetyPolicy } from "../safety/policy.js";
-import type { SurfaceAdapter } from "../surface/types.js";
+import type { Observation, SurfaceAdapter } from "../surface/types.js";
 import { detectOutcome } from "./outcome-detector.js";
 import { resolveTarget } from "./target-resolver.js";
 
@@ -1542,6 +1667,8 @@ export type ReplayOptions = {
   waitForHandoffResume?: () => Promise<string>;
 };
 
+type Checkpoint = { type: string; value: unknown };
+
 function toResolvedAction(step: CapabilityArtifact["steps"][number], locator: string, params: Record<string, unknown>) {
   const value = String(substituteParams(step.action.value, params) ?? "");
   if (step.action.type === "click") return { type: "click" as const, locator };
@@ -1553,6 +1680,25 @@ function toResolvedAction(step: CapabilityArtifact["steps"][number], locator: st
   return { type: "wait" as const, ms: 0 };
 }
 
+function checkpointMatches(checkpoint: unknown, observation: Observation): boolean {
+  if (!checkpoint || typeof checkpoint !== "object") return true;
+  const typed = checkpoint as Checkpoint;
+  if (typed.type === "text_visible") {
+    const expected = String(typed.value);
+    return observation.visual.visible_text_blocks.some((block) => block.includes(expected));
+  }
+  if (typed.type === "text_absent") {
+    const forbidden = String(typed.value);
+    return observation.visual.visible_text_blocks.every((block) => !block.includes(forbidden));
+  }
+  if (typed.type === "url_contains") return observation.state.url.includes(String(typed.value));
+  return false;
+}
+
+function missingDeclaredOutputs(artifact: CapabilityArtifact, outputs: Record<string, unknown>): string[] {
+  return Object.keys(artifact.contract.outputs ?? {}).filter((key) => !(key in outputs));
+}
+
 export async function runReplay(options: ReplayOptions): Promise<RunResult> {
   const parsed = parseCapabilityArtifact(options.artifact);
   if (parsed.capability.status === "draft" && !options.allowDraft) {
@@ -1561,15 +1707,18 @@ export async function runReplay(options: ReplayOptions): Promise<RunResult> {
   const artifact = applyVariantOverlay(parsed, options.tenantProfile);
   const logger = await createEvidenceLogger(options.evidenceRoot, options.runId);
   await logger.event({ event: "replay_started", actor: "replay", status: "ok", params: options.params });
-  const resumeCheckpoint = typeof artifact.handoff.resume_checkpoint === "string" ? artifact.handoff.resume_checkpoint : "post_handoff_observed";
+  const outputs: Record<string, unknown> = {};
+  const resumeCheckpoint = artifact.handoff.resume_checkpoint && typeof artifact.handoff.resume_checkpoint === "object"
+    ? artifact.handoff.resume_checkpoint as Checkpoint
+    : { type: "text_visible", value: "Dashboard" };
 
-  async function handleNeedsHuman(step: CapabilityArtifact["steps"][number], code: string, message: string): Promise<RunResult | "resumed"> {
+  async function handleNeedsHuman(step: CapabilityArtifact["steps"][number], code: string, message: string): Promise<RunResult | "step_completed"> {
     if (!options.interactiveHandoff) {
       const result: RunResult = { status: "needs_human", capability_id: artifact.capability.id, run_id: options.runId, step_id: step.id, code, message, evidence: { log: logger.path("run-log.jsonl") } };
       await logger.result(result);
       return result;
     }
-    await performInteractiveHandoff({
+    const handoff = await performInteractiveHandoff({
       dir: `${options.evidenceRoot}/handoff-${step.id}`,
       intervention_id: `${options.runId}_${step.id}`,
       reason: code,
@@ -1579,8 +1728,13 @@ export async function runReplay(options: ReplayOptions): Promise<RunResult> {
       resume_checkpoint: resumeCheckpoint,
       waitForResume: options.waitForHandoffResume
     });
+    if (!handoff.resume_verified) {
+      const result: RunResult = { status: "failure", capability_id: artifact.capability.id, run_id: options.runId, step_id: step.id, code: "handoff_resume_checkpoint_not_met", message: `Human handoff resumed, but checkpoint ${resumeCheckpoint.type} was not observed.`, evidence: { log: logger.path("run-log.jsonl") } };
+      await logger.result(result);
+      return result;
+    }
     await logger.event({ event: "handoff_resumed", actor: "human", status: "ok", step_id: step.id, reason_summary: message, params: options.params });
-    return "resumed";
+    return "step_completed";
   }
 
   for (const step of artifact.steps) {
@@ -1589,7 +1743,7 @@ export async function runReplay(options: ReplayOptions): Promise<RunResult> {
     if (knownOutcome.status !== "continue") {
       if (knownOutcome.status === "needs_human") {
         const handoff = await handleNeedsHuman(step, knownOutcome.code, knownOutcome.message);
-        if (handoff === "resumed") continue;
+        if (handoff === "step_completed") continue;
         return handoff;
       }
       const result: RunResult = { status: knownOutcome.status, capability_id: artifact.capability.id, run_id: options.runId, step_id: step.id, code: knownOutcome.code, message: knownOutcome.message, evidence: { log: logger.path("run-log.jsonl") } };
@@ -1605,16 +1759,19 @@ export async function runReplay(options: ReplayOptions): Promise<RunResult> {
     }
     if (safety.decision === "needs_human") {
       const handoff = await handleNeedsHuman(step, safety.code, safety.message);
-      if (handoff === "resumed") continue;
+      if (handoff === "step_completed") continue;
       return handoff;
     }
 
-    if (step.action.type === "finish") continue;
-    if (!step.action.target) continue;
+    if (!step.action.target) {
+      const result: RunResult = { status: "failure", capability_id: artifact.capability.id, run_id: options.runId, step_id: step.id, code: "invalid_artifact_step", message: `Step ${step.id} is missing a target.`, evidence: { log: logger.path("run-log.jsonl") } };
+      await logger.result(result);
+      return result;
+    }
     const resolution = resolveTarget(step.action.target, observation);
     if (resolution.status === "ambiguous") {
       const handoff = await handleNeedsHuman(step, resolution.code, resolution.message);
-      if (handoff === "resumed") continue;
+      if (handoff === "step_completed") continue;
       return handoff;
     }
     if (resolution.status === "not_found") {
@@ -1623,11 +1780,32 @@ export async function runReplay(options: ReplayOptions): Promise<RunResult> {
       return result;
     }
 
-    await options.surface.act(toResolvedAction(step, resolution.locator, options.params));
+    const actionResult = await options.surface.act(toResolvedAction(step, resolution.locator, options.params));
+    if (!actionResult.ok) {
+      const result: RunResult = { status: "failure", capability_id: artifact.capability.id, run_id: options.runId, step_id: step.id, code: "action_failed", message: actionResult.message ?? `Action ${step.action.type} failed.`, evidence: { log: logger.path("run-log.jsonl") } };
+      await logger.result(result);
+      return result;
+    }
+    Object.assign(outputs, actionResult.extracted ?? {});
     await logger.event({ event: "action_executed", actor: "replay", phase: step.phase, step_id: step.id, intent: step.intent, action_type: step.action.type, target_id: step.action.target.id, risk: step.risk, status: "ok", params: options.params });
+    if (step.checkpoint) {
+      const checkpointObservation = await options.surface.observe({ recent_actions: [step.id, "checkpoint"] });
+      if (!checkpointMatches(step.checkpoint, checkpointObservation)) {
+        const result: RunResult = { status: "failure", capability_id: artifact.capability.id, run_id: options.runId, step_id: step.id, code: "checkpoint_not_met", message: `Checkpoint ${step.checkpoint.type} was not observed after ${step.id}.`, evidence: { log: logger.path("run-log.jsonl") } };
+        await logger.result(result);
+        return result;
+      }
+    }
   }
 
-  const result: RunResult = { status: "success", capability_id: artifact.capability.id, run_id: options.runId, message: "Replay completed.", outputs: {}, evidence: { log: logger.path("run-log.jsonl") } };
+  const missingOutputs = missingDeclaredOutputs(artifact, outputs);
+  if (missingOutputs.length > 0) {
+    const result: RunResult = { status: "failure", capability_id: artifact.capability.id, run_id: options.runId, code: "missing_declared_outputs", message: `Replay completed without declared outputs: ${missingOutputs.join(", ")}.`, evidence: { log: logger.path("run-log.jsonl") } };
+    await logger.result(result);
+    return result;
+  }
+
+  const result: RunResult = { status: "success", capability_id: artifact.capability.id, run_id: options.runId, message: "Replay completed.", outputs, evidence: { log: logger.path("run-log.jsonl") } };
   await logger.result(result);
   return result;
 }
@@ -1781,8 +1959,7 @@ Create `examples/artifacts/blocked-submit-attempt.v1.json`:
           },
           "confidence": { "minimum": 0.85, "signals": ["role_name_match", "unique_match"] }
         }
-      },
-      "checkpoint": { "type": "blocked_before_action", "value": "submit_final_application" }
+      }
     }
   ],
   "known_outcomes": [],

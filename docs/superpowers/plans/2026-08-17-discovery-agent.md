@@ -764,9 +764,9 @@ export const autoLoanOfferReviewCapability: CapabilityDefinition = {
   known_outcomes: [
     { code: "member_not_found", status: "business_outcome", detect: { type: "text_visible", value: "No member found" }, message: "No member matched the supplied member_id." },
     { code: "no_auto_loan_offer", status: "business_outcome", detect: { type: "text_visible", value: "No active pre-approved auto loan offers" }, message: "Member has no active pre-approved auto loan offer." },
-    { code: "ambiguous_member_match", status: "needs_human", detect: { type: "multiple_rows_match", table: "member_results", match: "{{member_id}}" }, message: "Multiple member records matched." }
+    { code: "ambiguous_member_match", status: "needs_human", detect: { type: "text_visible", value: "Multiple member records matched" }, message: "Multiple member records matched." }
   ],
-  handoff: { mode: "same_session_cli", resume_checkpoint: "member_profile_visible" },
+  handoff: { mode: "same_session_cli", resume_checkpoint: { type: "text_visible", value: "Member Profile" } },
   compatibility: { app_family: "loan_servicing_portal", base_variant: "default", tested_variants: ["default"], required_features: ["member_search", "member_profile", "offers_tab", "auto_loan_offer_review"] },
   variant_overlays: {}
 };
