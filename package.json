@@ -11,7 +11,8 @@
     "build": "tsc --noEmit",
     "discover": "tsx src/cli/discover.ts",
     "replay": "tsx src/cli/replay.ts",
-    "evidence:validate": "tsx scripts/validate-evidence.ts"
+    "evidence:validate": "tsx scripts/validate-evidence.ts",
+    "evidence:handoff": "tsx scripts/run-scripted-handoff-evidence.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.7",

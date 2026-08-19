@@ -1,0 +1,5 @@
+{
+  "intervention_id": "replay_open_member_profile",
+  "controller": "automation",
+  "reason": "ambiguous_target"
+}

@@ -1,0 +1,13 @@
+{
+  "dir": "evidence/replay-15-interactive-handoff/handoff-open_member_profile",
+  "intervention_id": "replay_open_member_profile",
+  "reason": "ambiguous_target",
+  "before_screenshot": "evidence/replay-15-interactive-handoff/screenshots/handoff-before.png",
+  "after_screenshot": "evidence/replay-15-interactive-handoff/screenshots/handoff-after.png",
+  "human_summary": "Scripted operator selected the ambiguous member row with DOB year 1991 in the same browser session.",
+  "resume_checkpoint": {
+    "type": "text_visible",
+    "value": "Member Profile"
+  },
+  "resume_verified": true
+}

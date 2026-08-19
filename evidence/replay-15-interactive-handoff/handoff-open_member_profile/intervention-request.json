@@ -1,0 +1,9 @@
+{
+  "dir": "evidence/replay-15-interactive-handoff/handoff-open_member_profile",
+  "intervention_id": "replay_open_member_profile",
+  "reason": "ambiguous_target",
+  "step_id": "open_member_profile",
+  "before_screenshot": "evidence/replay-15-interactive-handoff/screenshots/handoff-before.png",
+  "message": "Multiple controls matched Open Member button for member {{member_id}}",
+  "controller": "human"
+}

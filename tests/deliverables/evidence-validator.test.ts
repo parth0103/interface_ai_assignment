@@ -8,6 +8,7 @@ const replayStatuses = {
   "replay-11-success": "success",
   "replay-12-business-outcome": "business_outcome",
   "replay-13-handoff": "needs_human",
+  "replay-15-interactive-handoff": "success",
   "replay-14-blocked-policy": "blocked"
 } as const;
 
@@ -24,6 +25,12 @@ async function writeCompleteEvidence(root: string): Promise<void> {
     await writeFile(join(root, subdir, "replay", "result.json"), `${JSON.stringify({ status })}\n`);
     await writeFile(join(root, subdir, "replay", "run-log.jsonl"), "{}\n");
   }
+
+  const handoffDir = join(root, "replay-15-interactive-handoff", "handoff-open_member_profile");
+  await mkdir(handoffDir, { recursive: true });
+  await writeFile(join(handoffDir, "intervention-request.json"), "{}\n");
+  await writeFile(join(handoffDir, "human-resume.json"), "{}\n");
+  await writeFile(join(handoffDir, "control-lease.json"), "{}\n");
 }
 
 describe("validateEvidence", () => {

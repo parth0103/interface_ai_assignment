@@ -116,6 +116,21 @@ npm run replay -- \
   --interactive-handoff
 ```
 
+Repeatable same-session handoff evidence:
+
+```bash
+npm run evidence:handoff
+```
+
+This scripted operator run pauses replay on the ambiguous member result, writes the intervention/control-lease files, clicks the correct row in the same browser session, verifies the resume checkpoint, and continues replay to final review. It writes:
+
+```text
+evidence/replay-15-interactive-handoff/replay/result.json
+evidence/replay-15-interactive-handoff/handoff-open_member_profile/intervention-request.json
+evidence/replay-15-interactive-handoff/handoff-open_member_profile/human-resume.json
+evidence/replay-15-interactive-handoff/handoff-open_member_profile/control-lease.json
+```
+
 ## Demo: Blocked Policy
 
 ```bash
@@ -148,6 +163,9 @@ evidence/replay-12-business-outcome/replay/result.json
 evidence/replay-12-business-outcome/replay/run-log.jsonl
 evidence/replay-13-handoff/replay/result.json
 evidence/replay-13-handoff/replay/run-log.jsonl
+evidence/replay-15-interactive-handoff/replay/result.json
+evidence/replay-15-interactive-handoff/replay/run-log.jsonl
+evidence/replay-15-interactive-handoff/handoff-open_member_profile/human-resume.json
 evidence/replay-14-blocked-policy/replay/result.json
 evidence/replay-14-blocked-policy/replay/run-log.jsonl
 ```

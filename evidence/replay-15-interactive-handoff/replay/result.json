@@ -1,0 +1,12 @@
+{
+  "status": "success",
+  "capability_id": "prepare_auto_loan_offer_review",
+  "run_id": "replay",
+  "message": "Replay completed.",
+  "outputs": {
+    "review_status": "Review Status: Ready for final review"
+  },
+  "evidence": {
+    "log": "evidence/replay-15-interactive-handoff/replay/run-log.jsonl"
+  }
+}

@@ -34,9 +34,9 @@ Replay verifies required features and checkpoints. If a tenant UI drifts, replay
 
 ## Escalation & handoff
 
-The primary handoff scenario is an ambiguous target after searching member `77777`. The current committed evidence demonstrates the safe non-interactive handoff path: replay returns `needs_human` with `code=ambiguous_target` rather than guessing which `Open Member` link to click.
+The primary handoff scenario is an ambiguous target after searching member `77777`. The committed evidence includes both the safe non-interactive handoff path, where replay returns `needs_human` with `code=ambiguous_target`, and a scripted same-session operator run under `evidence/replay-15-interactive-handoff`.
 
-The implementation also supports `--interactive-handoff`, which opens a non-headless browser, writes intervention/control-lease files, waits for the operator to select the correct row, verifies the resume checkpoint, and continues. This is intentionally a minimal same-session handoff, not a full operator console. The design keeps the control-transfer model real while avoiding unnecessary UI infrastructure.
+The interactive path writes intervention/control-lease files, cedes control of the live browser page, waits for the operator to select the correct row, verifies the resume checkpoint, and continues replay. The scripted evidence run uses the same callback seam a human operator would use, but makes the manual row selection repeatable for reviewers. This is intentionally a minimal same-session handoff, not a full operator console. The design keeps the control-transfer model real while avoiding unnecessary UI infrastructure.
 
 ## Safety
 

@@ -25,6 +25,14 @@ const replayRuns = {
     message: "Multiple controls matched the Open Member action for the requested member.",
     evidence: {}
   },
+  "replay-15-interactive-handoff": {
+    status: "success",
+    capability_id: "prepare_auto_loan_offer_review",
+    run_id: "mock_replay_interactive_handoff",
+    message: "Replay completed after same-session handoff.",
+    outputs: { review_status: "Review Status: Ready for final review" },
+    evidence: {}
+  },
   "replay-14-blocked-policy": {
     status: "blocked",
     capability_id: "prepare_auto_loan_offer_review",
@@ -64,6 +72,25 @@ export async function generateMockEvidence(root = "evidence"): Promise<void> {
       status: result.status
     });
   }
+  const handoffDir = join(root, "replay-15-interactive-handoff", "handoff-open_member_profile");
+  await mkdir(handoffDir, { recursive: true });
+  await writeJson(join(handoffDir, "intervention-request.json"), {
+    intervention_id: "mock_replay_interactive_handoff_open_member_profile",
+    reason: "ambiguous_target",
+    step_id: "open_member_profile",
+    controller: "human"
+  });
+  await writeJson(join(handoffDir, "human-resume.json"), {
+    intervention_id: "mock_replay_interactive_handoff_open_member_profile",
+    reason: "ambiguous_target",
+    human_summary: "Scripted operator selected the correct ambiguous member row.",
+    resume_verified: true
+  });
+  await writeJson(join(handoffDir, "control-lease.json"), {
+    intervention_id: "mock_replay_interactive_handoff_open_member_profile",
+    controller: "automation",
+    reason: "ambiguous_target"
+  });
 }
 
 async function writeJson(path: string, value: unknown): Promise<void> {

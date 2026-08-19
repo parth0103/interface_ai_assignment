@@ -10,6 +10,11 @@ const requiredFiles = [
   "replay-12-business-outcome/replay/run-log.jsonl",
   "replay-13-handoff/replay/result.json",
   "replay-13-handoff/replay/run-log.jsonl",
+  "replay-15-interactive-handoff/replay/result.json",
+  "replay-15-interactive-handoff/replay/run-log.jsonl",
+  "replay-15-interactive-handoff/handoff-open_member_profile/intervention-request.json",
+  "replay-15-interactive-handoff/handoff-open_member_profile/human-resume.json",
+  "replay-15-interactive-handoff/handoff-open_member_profile/control-lease.json",
   "replay-14-blocked-policy/replay/result.json",
   "replay-14-blocked-policy/replay/run-log.jsonl"
 ];
@@ -18,6 +23,7 @@ const expectedReplayStatuses = {
   "replay-11-success/replay/result.json": "success",
   "replay-12-business-outcome/replay/result.json": "business_outcome",
   "replay-13-handoff/replay/result.json": "needs_human",
+  "replay-15-interactive-handoff/replay/result.json": "success",
   "replay-14-blocked-policy/replay/result.json": "blocked"
 } as const;
 
