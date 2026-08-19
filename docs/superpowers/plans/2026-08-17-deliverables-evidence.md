@@ -15,7 +15,7 @@ The assignment requires `/REPORT.md` with exactly these headings: `Architecture`
 The assignment requires `/evidence/` with a saved example artifact and logs from discovery and replay.
 README must include setup, keys/config, mock mode, and exact demo commands.
 Evidence must include discovery success, replay success, business outcome, handoff, and blocked policy runs.
-Submitted evidence should show at least one real Gemini discovery run.
+Submitted evidence should show at least one real LLM discovery run. Current final committed evidence uses Claude via Anthropic (`evidence/discovery-claude-real-8`) with screenshot image context. Gemini and mock modes remain supported but are not the final committed real-model evidence.
 Do not commit `.env`, API keys, raw credentials, or the assignment PDF.
 Every task uses TDD where code changes are involved: write the failing test, verify failure, implement the minimum, verify pass, commit.
 
@@ -39,13 +39,15 @@ evidence/.gitkeep                      keeps evidence directory present before g
 Evidence files produced by running commands:
 
 ```text
-evidence/prepared-auto-loan-offer-review.v1.json
-evidence/discovery-success/
-evidence/replay-success/
-evidence/replay-business-outcome/
-evidence/replay-handoff/
-evidence/replay-blocked-policy/
+evidence/discovery-claude-real-8/artifact.v1.json
+evidence/discovery-claude-real-8/discovery/run-log.jsonl
+evidence/replay-11-success/replay/result.json
+evidence/replay-12-business-outcome/replay/result.json
+evidence/replay-13-handoff/replay/result.json
+evidence/replay-14-blocked-policy/replay/result.json
 ```
+
+Assignment-facing README/REPORT should name these current evidence paths directly. If we later choose to add alias folders (`discovery-success`, `replay-success`, etc.), update the validator and README in the same commit.
 
 ---
 
@@ -82,9 +84,9 @@ describe("REPORT.md", () => {
     ]);
   });
 
-  it("states that replay does not call Gemini", () => {
+  it("states that replay does not call any LLM", () => {
     const report = readFileSync("REPORT.md", "utf8");
-    expect(report).toContain("Replay does not call Gemini");
+    expect(report).toContain("Replay does not call any LLM");
   });
 });
 ```
@@ -110,9 +112,9 @@ Create `REPORT.md`:
 
 This project implements a focused vertical slice of a computer-use automation system for a mock Loan Servicing Portal. The main capability is `prepare_auto_loan_offer_review`: find a member, open their pre-approved auto loan offer, and advance it to the final review screen without submitting the application.
 
-The system is a TypeScript modular monolith. Gemini is used only during discovery. It observes a layered surface observation and proposes one bounded action at a time. The system validates the action, checks policy, executes through a `SurfaceAdapter`, records evidence, and converts successful actions into a capability artifact.
+The system is a TypeScript modular monolith. An LLM is used only during discovery. The final committed real-model evidence uses Claude via Anthropic, while Gemini and mock clients remain available. Discovery observes a layered surface observation and proposes one bounded action at a time. The system validates the action, checks policy, executes through a `SurfaceAdapter`, records evidence, and converts successful actions into a capability artifact.
 
-Replay does not call Gemini. Replay loads the artifact, validates parameters, applies tenant overlays, checks policy before every action, resolves targets deterministically, verifies checkpoints, extracts outputs, and returns a structured result.
+Replay does not call any LLM. Replay loads the artifact, validates parameters, applies tenant overlays, checks policy before every action, resolves targets deterministically, verifies checkpoints, extracts outputs, and returns a structured result.
 
 ## Artifact schema
 
@@ -140,7 +142,7 @@ Replay verifies required features and checkpoints. If a tenant UI drifts, replay
 
 ## Escalation & handoff
 
-The primary handoff scenario is `ambiguous_member_match`. Member `77777` returns two possible records, and the system refuses to choose. It writes an intervention request, captures a screenshot, transfers a control lease from automation to human, leaves the same browser session open, waits for the operator to select the correct row and resume, captures after-state evidence, and continues.
+The primary handoff scenario is an ambiguous target after searching member `77777`. The current committed evidence demonstrates the safe non-interactive handoff path: replay returns `needs_human` with `code=ambiguous_target` rather than guessing which `Open Member` link to click. The implementation also supports `--interactive-handoff`, which opens a non-headless browser, writes intervention/control-lease files, waits for the operator to select the correct row, verifies the resume checkpoint, and continues.
 
 This is intentionally a minimal same-session handoff, not a full operator console. The design keeps the control-transfer model real while avoiding unnecessary UI infrastructure.
 
@@ -150,7 +152,7 @@ The safety model combines origin allowlisting, action allowlisting, and intent p
 
 Safe actions include search, navigation, reading offers, selecting non-binding options, and reaching final review. Approval-required actions include ambiguous-member resolution and warning acknowledgement. Blocked actions include final application submission, loan approval, disbursement, credit pull, pricing changes, term changes, eligibility override, and accepting an e-signature.
 
-Screenshots are captured locally for evidence. By default, Gemini receives redacted structured observations rather than raw screenshots. This assignment uses synthetic data only.
+Screenshots are captured locally for evidence. Screenshots are sent to the LLM only when `SEND_SCREENSHOTS_TO_LLM=true`; the final Claude discovery evidence used screenshot image context. This assignment uses synthetic data only.
 
 ## Cuts
 
@@ -185,7 +187,7 @@ git commit -m "docs: add assignment report"
 - Test: `tests/deliverables/readme.test.ts`
 
 **Interfaces:**
-- Produces: setup guide, environment guide, mock mode, Gemini mode, discovery command, replay commands, evidence map
+- Produces: setup guide, environment guide, mock/Claude/Gemini modes, discovery command, replay commands, evidence map
 - Consumes: CLI commands from earlier plans
 
 - [ ] **Step 1: Write the failing README test**
@@ -206,7 +208,9 @@ describe("README.md", () => {
       "npm run discover",
       "npm run replay",
       "LLM_MODE=mock",
-      "GEMINI_API_KEY"
+      "GEMINI_API_KEY",
+      "ANTHROPIC_API_KEY",
+      "CLAUDE_MODEL"
     ]) {
       expect(readme).toContain(expected);
     }
@@ -214,7 +218,7 @@ describe("README.md", () => {
 
   it("mentions all five evidence scenarios", () => {
     const readme = readFileSync("README.md", "utf8");
-    for (const expected of ["discovery-success", "replay-success", "replay-business-outcome", "replay-handoff", "replay-blocked-policy"]) {
+    for (const expected of ["discovery-claude-real-8", "replay-11-success", "replay-12-business-outcome", "replay-13-handoff", "replay-14-blocked-policy"]) {
       expect(readme).toContain(expected);
     }
   });
@@ -246,7 +250,7 @@ The demo goal is:
 Find member 24816, open their pre-approved auto loan offer, and advance it to the final review screen.
 ```
 
-Gemini is used for discovery only. Replay is deterministic and does not call the model.
+Claude was used for the final committed real-model discovery evidence. Gemini and mock modes are also supported. Replay is deterministic and does not call any model.
 
 ## Setup
 
@@ -259,9 +263,11 @@ cp .env.example .env
 Environment variables:
 
 ```text
+ANTHROPIC_API_KEY=required for real Claude discovery
+CLAUDE_MODEL=claude-sonnet-5
 GEMINI_API_KEY=required for real Gemini discovery
-DISCOVERY_MODEL=gemini-2.5-pro
-LLM_MODE=mock or gemini
+DISCOVERY_MODEL=gemini-2.5-flash
+LLM_MODE=mock, claude, anthropic, or gemini
 SEND_SCREENSHOTS_TO_LLM=false
 PORT=3000
 ```
@@ -287,31 +293,33 @@ LLM_MODE=mock npm run discover -- \
   --out evidence/mock-discovery
 ```
 
-Real Gemini mode:
+Real Claude mode, matching the committed evidence:
 
 ```bash
-LLM_MODE=gemini npm run discover -- \
-  --llm gemini \
-  --goal "Find member 24816, open their pre-approved auto loan offer, and advance it to the final review screen." \
+SEND_SCREENSHOTS_TO_LLM=true npm run discover -- \
+  --llm claude \
+  --goal "Find member 24816, open their pre-approved auto loan offer, and advance it to the final review screen. Extract the review status before finishing." \
   --target http://localhost:3000 \
   --params examples/params/happy-path.json \
-  --out evidence/discovery-success
+  --out evidence/discovery-claude-real-8
 ```
 
 The successful discovery run writes:
 
 ```text
-evidence/prepared-auto-loan-offer-review.v1.json
-evidence/discovery-success/
+evidence/discovery-claude-real-8/artifact.v1.json
+evidence/discovery-claude-real-8/discovery/run-log.jsonl
 ```
+
+Real Gemini mode is also supported with `--llm gemini` and `GEMINI_API_KEY`.
 
 ## Demo: Replay Success
 
 ```bash
 npm run replay -- \
-  --artifact evidence/prepared-auto-loan-offer-review.v1.json \
+  --artifact evidence/discovery-claude-real-8/artifact.v1.json \
   --params examples/params/happy-path.json \
-  --out evidence/replay-success \
+  --out evidence/replay-11-success \
   --allow-draft
 ```
 
@@ -319,9 +327,9 @@ npm run replay -- \
 
 ```bash
 npm run replay -- \
-  --artifact evidence/prepared-auto-loan-offer-review.v1.json \
+  --artifact evidence/discovery-claude-real-8/artifact.v1.json \
   --params examples/params/no-offer.json \
-  --out evidence/replay-business-outcome \
+  --out evidence/replay-12-business-outcome \
   --allow-draft
 ```
 
@@ -331,14 +339,24 @@ Expected status: `business_outcome`.
 
 ```bash
 npm run replay -- \
-  --artifact evidence/prepared-auto-loan-offer-review.v1.json \
+  --artifact evidence/discovery-claude-real-8/artifact.v1.json \
   --params examples/params/ambiguous-member.json \
-  --out evidence/replay-handoff \
+  --out evidence/replay-13-handoff \
+  --allow-draft
+```
+
+Expected status for committed evidence: `needs_human`, code: `ambiguous_target`.
+
+Optional interactive same-session handoff demo:
+
+```bash
+npm run replay -- \
+  --artifact evidence/discovery-claude-real-8/artifact.v1.json \
+  --params examples/params/ambiguous-member.json \
+  --out evidence/replay-handoff-interactive \
   --allow-draft \
   --interactive-handoff
 ```
-
-Expected behavior: automation pauses, writes an intervention request, leaves the same browser open, waits for the human to select the correct member, then resumes.
 
 ## Demo: Blocked Policy
 
@@ -346,7 +364,7 @@ Expected behavior: automation pauses, writes an intervention request, leaves the
 npm run replay -- \
   --artifact examples/artifacts/blocked-submit-attempt.v1.json \
   --params examples/params/happy-path.json \
-  --out evidence/replay-blocked-policy \
+  --out evidence/replay-14-blocked-policy \
   --allow-draft
 ```
 
@@ -364,12 +382,12 @@ npm run evidence:validate
 ## Evidence Map
 
 ```text
-evidence/discovery-success
-evidence/replay-success
-evidence/replay-business-outcome
-evidence/replay-handoff
-evidence/replay-blocked-policy
-evidence/prepared-auto-loan-offer-review.v1.json
+evidence/discovery-claude-real-8/artifact.v1.json
+evidence/discovery-claude-real-8/discovery/run-log.jsonl
+evidence/replay-11-success/replay/result.json
+evidence/replay-12-business-outcome/replay/result.json
+evidence/replay-13-handoff/replay/result.json
+evidence/replay-14-blocked-policy/replay/result.json
 ```
 ```
 
@@ -418,7 +436,7 @@ describe("validateEvidence", () => {
   it("reports missing required evidence paths", async () => {
     const dir = await mkdtemp(join(tmpdir(), "evidence-validator-"));
     try {
-      expect(await validateEvidence(dir)).toContain("missing prepared-auto-loan-offer-review.v1.json");
+      expect(await validateEvidence(dir)).toContain("missing discovery-claude-real-8/artifact.v1.json");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -427,11 +445,13 @@ describe("validateEvidence", () => {
   it("passes when required evidence files are present", async () => {
     const dir = await mkdtemp(join(tmpdir(), "evidence-validator-"));
     try {
-      await writeFile(join(dir, "prepared-auto-loan-offer-review.v1.json"), "{}");
-      for (const subdir of ["discovery-success", "replay-success", "replay-business-outcome", "replay-handoff", "replay-blocked-policy"]) {
-        await mkdir(join(dir, subdir), { recursive: true });
-        await writeFile(join(dir, subdir, "result.json"), JSON.stringify({ status: "success" }));
-        await writeFile(join(dir, subdir, "run-log.jsonl"), "{}\n");
+      await mkdir(join(dir, "discovery-claude-real-8", "discovery"), { recursive: true });
+      await writeFile(join(dir, "discovery-claude-real-8", "artifact.v1.json"), "{}");
+      await writeFile(join(dir, "discovery-claude-real-8", "discovery", "run-log.jsonl"), "{}\n");
+      for (const subdir of ["replay-11-success", "replay-12-business-outcome", "replay-13-handoff", "replay-14-blocked-policy"]) {
+        await mkdir(join(dir, subdir, "replay"), { recursive: true });
+        await writeFile(join(dir, subdir, "replay", "result.json"), JSON.stringify({ status: "success" }));
+        await writeFile(join(dir, subdir, "replay", "run-log.jsonl"), "{}\n");
       }
       expect(await validateEvidence(dir)).toEqual([]);
     } finally {
@@ -459,12 +479,17 @@ Create `scripts/validate-evidence.ts`:
 import { access } from "node:fs/promises";
 import { join } from "node:path";
 
-const requiredRunDirs = [
-  "discovery-success",
-  "replay-success",
-  "replay-business-outcome",
-  "replay-handoff",
-  "replay-blocked-policy"
+const requiredFiles = [
+  "discovery-claude-real-8/artifact.v1.json",
+  "discovery-claude-real-8/discovery/run-log.jsonl",
+  "replay-11-success/replay/result.json",
+  "replay-11-success/replay/run-log.jsonl",
+  "replay-12-business-outcome/replay/result.json",
+  "replay-12-business-outcome/replay/run-log.jsonl",
+  "replay-13-handoff/replay/result.json",
+  "replay-13-handoff/replay/run-log.jsonl",
+  "replay-14-blocked-policy/replay/result.json",
+  "replay-14-blocked-policy/replay/run-log.jsonl"
 ];
 
 async function exists(path: string): Promise<boolean> {
@@ -478,13 +503,8 @@ async function exists(path: string): Promise<boolean> {
 
 export async function validateEvidence(root = "evidence"): Promise<string[]> {
   const failures: string[] = [];
-  if (!(await exists(join(root, "prepared-auto-loan-offer-review.v1.json")))) {
-    failures.push("missing prepared-auto-loan-offer-review.v1.json");
-  }
-  for (const dir of requiredRunDirs) {
-    if (!(await exists(join(root, dir)))) failures.push(`missing ${dir}`);
-    if (!(await exists(join(root, dir, "result.json")))) failures.push(`missing ${dir}/result.json`);
-    if (!(await exists(join(root, dir, "run-log.jsonl")))) failures.push(`missing ${dir}/run-log.jsonl`);
+  for (const file of requiredFiles) {
+    if (!(await exists(join(root, file)))) failures.push(`missing ${file}`);
   }
   return failures;
 }
@@ -554,7 +574,7 @@ describe("generateMockEvidence", () => {
     try {
       await generateMockEvidence(dir);
       expect(await validateEvidence(dir)).toEqual([]);
-      const blocked = JSON.parse(await readFile(join(dir, "replay-blocked-policy", "result.json"), "utf8"));
+      const blocked = JSON.parse(await readFile(join(dir, "replay-14-blocked-policy", "replay", "result.json"), "utf8"));
       expect(blocked.status).toBe("blocked");
       expect(blocked.code).toBe("policy_violation");
     } finally {
@@ -583,25 +603,23 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const runs = {
-  "discovery-success": { status: "success", capability_id: "prepare_auto_loan_offer_review", run_id: "discovery", message: "Gemini discovery completed against synthetic portal.", evidence: {} },
-  "replay-success": { status: "success", capability_id: "prepare_auto_loan_offer_review", run_id: "replay_success", message: "Replay reached final review.", evidence: {} },
-  "replay-business-outcome": { status: "business_outcome", capability_id: "prepare_auto_loan_offer_review", run_id: "replay_business", code: "no_auto_loan_offer", message: "Member has no active pre-approved auto loan offer.", evidence: {} },
-  "replay-handoff": { status: "success", capability_id: "prepare_auto_loan_offer_review", run_id: "replay_handoff", message: "Replay resumed after same-session human handoff.", evidence: {} },
-  "replay-blocked-policy": { status: "blocked", capability_id: "prepare_auto_loan_offer_review", run_id: "replay_blocked", code: "policy_violation", step_id: "submit_final_application", message: "Blocked forbidden loan action: submit_final_application.", evidence: {} }
+  "replay-11-success": { status: "success", capability_id: "prepare_auto_loan_offer_review", run_id: "replay_success", message: "Replay reached final review.", evidence: {} },
+  "replay-12-business-outcome": { status: "business_outcome", capability_id: "prepare_auto_loan_offer_review", run_id: "replay_business", code: "no_auto_loan_offer", message: "Member has no active pre-approved auto loan offer.", evidence: {} },
+  "replay-13-handoff": { status: "needs_human", capability_id: "prepare_auto_loan_offer_review", run_id: "replay_handoff", code: "ambiguous_target", message: "Multiple controls matched Open Member button for member {{member_id}}.", evidence: {} },
+  "replay-14-blocked-policy": { status: "blocked", capability_id: "prepare_auto_loan_offer_review", run_id: "replay_blocked", code: "policy_violation", step_id: "submit_final_application", message: "Blocked forbidden loan action: submit_final_application.", evidence: {} }
 };
 
 export async function generateMockEvidence(root = "evidence"): Promise<void> {
   await mkdir(root, { recursive: true });
-  await writeFile(join(root, "prepared-auto-loan-offer-review.v1.json"), `${JSON.stringify({ schema_version: "1.0", capability: { id: "prepare_auto_loan_offer_review", status: "draft" } }, null, 2)}\n`);
+  await mkdir(join(root, "discovery-claude-real-8", "discovery"), { recursive: true });
+  await writeFile(join(root, "discovery-claude-real-8", "artifact.v1.json"), `${JSON.stringify({ schema_version: "1.0", capability: { id: "prepare_auto_loan_offer_review", status: "draft" } }, null, 2)}\n`);
+  await writeFile(join(root, "discovery-claude-real-8", "discovery", "run-log.jsonl"), `${JSON.stringify({ event: "mock_discovery", status: "success" })}\n`);
   for (const [dir, result] of Object.entries(runs)) {
-    const runDir = join(root, dir);
+    const runDir = join(root, dir, "replay");
     await mkdir(runDir, { recursive: true });
     await writeFile(join(runDir, "result.json"), `${JSON.stringify(result, null, 2)}\n`);
     await writeFile(join(runDir, "run-log.jsonl"), `${JSON.stringify({ event: "mock_evidence", status: result.status })}\n`);
   }
-  await writeFile(join(root, "replay-handoff", "intervention-request.json"), `${JSON.stringify({ controller: "human", reason: "ambiguous_member_match" }, null, 2)}\n`);
-  await writeFile(join(root, "replay-handoff", "human-resume.json"), `${JSON.stringify({ human_summary: "Operator selected the correct member row.", resume_checkpoint: "member_profile_visible" }, null, 2)}\n`);
-  await writeFile(join(root, "replay-handoff", "control-lease.json"), `${JSON.stringify({ controller: "automation", reason: "ambiguous_member_match" }, null, 2)}\n`);
 }
 
 if (process.argv[1]?.endsWith("generate-mock-evidence.ts")) {
@@ -629,81 +647,89 @@ git commit -m "feat: add mock evidence generator"
 
 ---
 
-### Task 5: Generate And Validate Final Evidence
+### Task 5: Validate Current Final Evidence
 
 **Files:**
 - Modify: `evidence/**`
 
 **Interfaces:**
-- Consumes: app, discover CLI, replay CLI, evidence validator
-- Produces: complete `/evidence/` directory for assignment review
+- Consumes: current committed Claude discovery and replay evidence, evidence validator
+- Produces: verified `/evidence/` directory for assignment review
 
-- [ ] **Step 1: Start the local app**
+- [ ] **Step 1: Confirm current final evidence is present**
 
-Run in one terminal:
+Run:
 
 ```bash
-npm run app
+find evidence -maxdepth 3 -type f | sort
 ```
 
 Expected:
 
 ```text
-Loan Servicing Portal listening on http://localhost:3000
+evidence/discovery-claude-real-8/artifact.v1.json
+evidence/replay-11-success/replay/result.json
+evidence/replay-12-business-outcome/replay/result.json
+evidence/replay-13-handoff/replay/result.json
+evidence/replay-14-blocked-policy/replay/result.json
 ```
 
-- [ ] **Step 2: Run real Gemini discovery if `GEMINI_API_KEY` is available**
+- [ ] **Step 2: Optional: regenerate real Claude discovery**
+
+Only run this if the evaluator needs fresh evidence or current evidence is missing. Requires `ANTHROPIC_API_KEY`.
 
 Run:
 
 ```bash
-LLM_MODE=gemini npm run discover -- \
-  --llm gemini \
-  --goal "Find member 24816, open their pre-approved auto loan offer, and advance it to the final review screen." \
+SEND_SCREENSHOTS_TO_LLM=true npm run discover -- \
+  --llm claude \
+  --goal "Find member 24816, open their pre-approved auto loan offer, and advance it to the final review screen. Extract the review status before finishing." \
   --target http://localhost:3000 \
   --params examples/params/happy-path.json \
-  --out evidence/discovery-success
+  --out evidence/discovery-claude-real-8
 ```
 
 Expected:
 
 ```text
 status=success
-evidence/prepared-auto-loan-offer-review.v1.json exists
-evidence/discovery-success/discovery/run-log.jsonl exists
+evidence/discovery-claude-real-8/artifact.v1.json exists
+evidence/discovery-claude-real-8/discovery/run-log.jsonl exists
 ```
 
-- [ ] **Step 3: Run mock discovery if real Gemini is unavailable during local verification**
+- [ ] **Step 3: Optional: run mock discovery if real LLM credentials are unavailable**
+
+Mock mode is useful for local smoke checks but is not the committed final real-model evidence.
 
 Run:
 
 ```bash
 LLM_MODE=mock npm run discover -- \
   --llm mock \
-  --goal "Find member 24816, open their pre-approved auto loan offer, and advance it to the final review screen." \
+  --goal "Find member 24816, open their pre-approved auto loan offer, and advance it to the final review screen. Extract the review status before finishing." \
   --target http://localhost:3000 \
   --params examples/params/happy-path.json \
-  --out evidence/discovery-success
+  --out evidence/mock-discovery
 ```
 
 Expected:
 
 ```text
 status=success
-evidence/prepared-auto-loan-offer-review.v1.json exists
+mock artifact is emitted
 ```
 
-Note in README/REPORT whether final committed evidence uses Gemini or mock mode.
+README/REPORT must state that final committed evidence uses Claude.
 
-- [ ] **Step 4: Run replay success**
+- [ ] **Step 4: Optional: rerun replay success**
 
 Run:
 
 ```bash
 npm run replay -- \
-  --artifact evidence/prepared-auto-loan-offer-review.v1.json \
+  --artifact evidence/discovery-claude-real-8/artifact.v1.json \
   --params examples/params/happy-path.json \
-  --out evidence/replay-success \
+  --out evidence/replay-11-success \
   --allow-draft
 ```
 
@@ -713,15 +739,15 @@ Expected:
 status=success
 ```
 
-- [ ] **Step 5: Run replay business outcome**
+- [ ] **Step 5: Optional: rerun replay business outcome**
 
 Run:
 
 ```bash
 npm run replay -- \
-  --artifact evidence/prepared-auto-loan-offer-review.v1.json \
+  --artifact evidence/discovery-claude-real-8/artifact.v1.json \
   --params examples/params/no-offer.json \
-  --out evidence/replay-business-outcome \
+  --out evidence/replay-12-business-outcome \
   --allow-draft
 ```
 
@@ -732,32 +758,26 @@ status=business_outcome
 code=no_auto_loan_offer
 ```
 
-- [ ] **Step 6: Run replay handoff**
+- [ ] **Step 6: Optional: rerun non-interactive handoff evidence**
 
 Run:
 
 ```bash
 npm run replay -- \
-  --artifact evidence/prepared-auto-loan-offer-review.v1.json \
+  --artifact evidence/discovery-claude-real-8/artifact.v1.json \
   --params examples/params/ambiguous-member.json \
-  --out evidence/replay-handoff \
-  --allow-draft \
-  --interactive-handoff
+  --out evidence/replay-13-handoff \
+  --allow-draft
 ```
 
 Expected:
 
 ```text
-automation pauses
-intervention-request.json is written
-human uses same browser session
-human resumes
-human-resume.json is written
-control-lease.json returns to automation
-status=success after resume
+status=needs_human
+code=ambiguous_target
 ```
 
-- [ ] **Step 7: Run blocked policy scenario**
+- [ ] **Step 7: Optional: rerun blocked policy scenario**
 
 Run:
 
@@ -765,7 +785,7 @@ Run:
 npm run replay -- \
   --artifact examples/artifacts/blocked-submit-attempt.v1.json \
   --params examples/params/happy-path.json \
-  --out evidence/replay-blocked-policy \
+  --out evidence/replay-14-blocked-policy \
   --allow-draft
 ```
 
@@ -791,11 +811,11 @@ Expected:
 Evidence validation passed.
 ```
 
-- [ ] **Step 9: Commit evidence**
+- [ ] **Step 9: Commit evidence only if it changed**
 
 ```bash
-git add evidence README.md REPORT.md
-git commit -m "docs: add final evidence and deliverables"
+git add evidence
+git commit -m "chore: update final evidence"
 ```
 
 ---
@@ -834,7 +854,7 @@ Run:
 ```bash
 git status --short
 git ls-files | rg "Assignment A|\\.env$|\\.env\\."
-rg -n "GEMINI_API_KEY=|AIza|secret|token" README.md REPORT.md src apps tests scripts evidence examples
+rg -n "GEMINI_API_KEY=|ANTHROPIC_API_KEY=|AIza|sk-ant|secret|token" README.md REPORT.md src apps tests scripts evidence examples
 ```
 
 Expected:
@@ -843,7 +863,7 @@ Expected:
 Assignment PDF is not tracked
 .env files are not tracked
 no real API key is present
-only documentation references to GEMINI_API_KEY appear
+only documentation references to GEMINI_API_KEY and ANTHROPIC_API_KEY appear
 ```
 
 - [ ] **Step 3: Commit any final hygiene fixes**
